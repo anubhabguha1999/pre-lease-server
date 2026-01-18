@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const User = require('../models/user');
 const UserRole = require('../models/userRole');
+const Token = require('../models/token');
 const { isValidEmail, isValidPhone, validateRequiredFields } = require('../utils/validators');
 const createAppError = require('../utils/appError');
 
@@ -65,12 +66,16 @@ const signup = async (req, res, next) => {
       roleName: role_name,
     });
 
+    await Token.createRefreshToken(createUser.userId, role_name);
+    const accessToken = Token.generateAccessToken(createUser.userId, role_name);
+
     return res.status(201).json({
       success: true,
       message: 'User created successfully',
       data: {
         userId: createUser.userId,
         role: createRole.roleName,
+        accessToken,
       },
     });
   } catch (error) {

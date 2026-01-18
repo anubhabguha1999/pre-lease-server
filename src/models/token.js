@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../db/connection');
+const { sequelize } = require('../config/dbConnection');
+const jwt = require('jsonwebtoken');
 
 const Token = sequelize.define(
   'Token',
@@ -9,7 +10,6 @@ const Token = sequelize.define(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
       allowNull: false,
-      field: 'token_id',
     },
     userId: {
       type: DataTypes.UUID,
@@ -25,49 +25,40 @@ const Token = sequelize.define(
       type: DataTypes.STRING(500),
       allowNull: false,
       unique: true,
-      field: 'refresh_token',
     },
     deviceId: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'device_id',
     },
     userAgent: {
       type: DataTypes.TEXT,
       allowNull: true,
-      field: 'user_agent',
     },
     ipAddress: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'ip_address',
     },
     issuedAt: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW,
-      field: 'issued_at',
     },
     expiresAt: {
       type: DataTypes.DATE,
       allowNull: false,
-      field: 'expires_at',
     },
     lastUsedAt: {
       type: DataTypes.DATE,
       allowNull: true,
-      field: 'last_used_at',
     },
     isActive: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      field: 'is_active',
     },
     revocationReason: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      field: 'revocation_reason',
     },
   },
   {
@@ -78,13 +69,131 @@ const Token = sequelize.define(
   }
 );
 
-// Association with User model
-Token.associate = models => {
-  Token.belongsTo(models.User, {
-    foreignKey: 'userId',
-    targetKey: 'userId',
-    as: 'user',
+// Static method: Generate Access Token
+Token.generateAccessToken = (userId, roleName) => {
+  return jwt.sign(
+    {
+      _id: userId,
+      role: roleName,
+    },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+    }
+  );
+};
+
+// Static method: Generate Refresh Token (JWT)
+Token.generateRefreshToken = (userId, roleName) => {
+  return jwt.sign(
+    {
+      _id: userId,
+      role: roleName,
+    },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+    }
+  );
+};
+
+// Static method: Calculate expiry date from string like '30d', '7d', '24h'
+Token.calculateExpiryDate = expiryString => {
+  const match = expiryString.match(/^(\d+)([dhms])$/);
+  if (!match) throw new Error('Invalid expiry format. Use format like: 30d, 24h, 60m, 3600s');
+
+  const value = parseInt(match[1]);
+  const unit = match[2];
+
+  const now = new Date();
+  switch (unit) {
+    case 'd':
+      return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
+    case 'h':
+      return new Date(now.getTime() + value * 60 * 60 * 1000);
+    case 'm':
+      return new Date(now.getTime() + value * 60 * 1000);
+    case 's':
+      return new Date(now.getTime() + value * 1000);
+    default:
+      throw new Error('Invalid time unit. Use: d (days), h (hours), m (minutes), s (seconds)');
+  }
+};
+
+// Static method: Create and save refresh token with metadata
+Token.createRefreshToken = async (userId, roleName, deviceInfo = {}) => {
+  const refreshTokenJWT = Token.generateRefreshToken(userId, roleName);
+  const expiresAt = Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
+
+  const tokenRecord = await Token.create({
+    userId,
+    refreshToken: refreshTokenJWT,
+    deviceId: deviceInfo.deviceId || null,
+    userAgent: deviceInfo.userAgent || null,
+    ipAddress: deviceInfo.ipAddress || null,
+    expiresAt,
+    isActive: true,
   });
+
+  return tokenRecord;
+};
+
+// Static method: Verify refresh token from database
+Token.verifyRefreshToken = async refreshToken => {
+  const tokenRecord = await Token.findOne({
+    where: {
+      refreshToken,
+      isActive: true,
+    },
+  });
+
+  if (!tokenRecord) {
+    return { valid: false, message: 'Token not found or revoked' };
+  }
+
+  if (new Date() > new Date(tokenRecord.expiresAt)) {
+    return { valid: false, message: 'Token expired' };
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    return { valid: true, token: tokenRecord, decoded };
+  } catch (error) {
+    return { valid: false, message: 'Invalid token signature' };
+  }
+};
+
+// Static method: Revoke specific token
+Token.revokeToken = async (refreshToken, reason = 'logout') => {
+  const result = await Token.update(
+    {
+      isActive: false,
+      revocationReason: reason,
+    },
+    {
+      where: { refreshToken },
+    }
+  );
+
+  return result[0] > 0;
+};
+
+// Static method: Revoke all tokens for a user
+Token.revokeAllUserTokens = async (userId, reason = 'logout_all_devices') => {
+  const result = await Token.update(
+    {
+      isActive: false,
+      revocationReason: reason,
+    },
+    {
+      where: {
+        userId,
+        isActive: true,
+      },
+    }
+  );
+
+  return result[0];
 };
 
 module.exports = Token;

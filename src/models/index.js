@@ -5,6 +5,8 @@ const UserRole = require('./userRole');
 const Token = require('./token');
 
 // Define associations
+
+// User ↔ UserRole
 User.hasMany(UserRole, {
   foreignKey: 'user_id',
   as: 'roles',
@@ -12,6 +14,18 @@ User.hasMany(UserRole, {
 
 UserRole.belongsTo(User, {
   foreignKey: 'user_id',
+  as: 'user',
+});
+
+// User ↔ Token
+User.hasMany(Token, {
+  foreignKey: 'userId',
+  as: 'tokens',
+});
+
+Token.belongsTo(User, {
+  foreignKey: 'userId',
+  targetKey: 'userId',
   as: 'user',
 });
 
