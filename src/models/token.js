@@ -120,24 +120,6 @@ Token.calculateExpiryDate = expiryString => {
   }
 };
 
-// Static method: Create and save refresh token with metadata
-Token.createRefreshToken = async (userId, roleName, deviceInfo = {}) => {
-  const refreshTokenJWT = Token.generateRefreshToken(userId, roleName);
-  const expiresAt = Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
-
-  const tokenRecord = await Token.create({
-    userId,
-    refreshToken: refreshTokenJWT,
-    deviceId: deviceInfo.deviceId || null,
-    userAgent: deviceInfo.userAgent || null,
-    ipAddress: deviceInfo.ipAddress || null,
-    expiresAt,
-    isActive: true,
-  });
-
-  return tokenRecord;
-};
-
 // Static method: Verify refresh token from database
 Token.verifyRefreshToken = async refreshToken => {
   const tokenRecord = await Token.findOne({
