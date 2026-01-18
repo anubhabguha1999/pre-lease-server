@@ -90,17 +90,14 @@ const signup = async (req, res, next) => {
         { transaction: t }
       );
 
-      // Generate access token (doesn't need transaction - not saved to DB)
-      const accessToken = Token.generateAccessToken(createUser.userId, role_name);
-
       return {
         user: createUser,
         role: createRole,
-        accessToken,
         refreshToken: tokenRecord.refreshToken,
       };
     });
 
+    const accessToken = Token.generateAccessToken(result.user.userId, role_name);
     // If we reach here, transaction was successful
     return res.status(201).json({
       success: true,
@@ -108,7 +105,7 @@ const signup = async (req, res, next) => {
       data: {
         userId: result.user.userId,
         role: result.role.roleName,
-        accessToken: result.accessToken,
+        accessToken,
         refreshToken: result.refreshToken,
       },
     });
