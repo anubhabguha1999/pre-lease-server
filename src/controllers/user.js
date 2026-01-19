@@ -1,7 +1,5 @@
 const { Op } = require('sequelize');
-const User = require('../models/user');
-const UserRole = require('../models/userRole');
-const Token = require('../models/token');
+const { User, UserRole, Token } = require('../models/index');
 const { isValidEmail, isValidPhone, validateRequiredFields } = require('../utils/validators');
 const createAppError = require('../utils/appError');
 const { sequelize } = require('../config/dbConnection');
@@ -115,4 +113,99 @@ const signup = async (req, res, next) => {
   }
 };
 
-module.exports = { signup };
+const login = async (req, res, next) => {
+  try {
+    const { mobileNumber } = req.body;
+
+    // Validate required fields
+    const requiredFields = ['mobileNumber'];
+    const missing = validateRequiredFields(requiredFields, req.body);
+    if (missing.length > 0) {
+      return next(createAppError(`Missing required fields: ${missing.join(', ')}`, 400));
+    }
+
+    // Validate mobile number
+    if (!isValidPhone(mobileNumber)) {
+      return next(
+        createAppError('Invalid mobile number. Must be 10 digits starting with 6-9', 400)
+      );
+    }
+
+    // Check if user exists
+    const existingUser = await User.findOne({
+      where: { mobileNumber },
+      attributes: ['mobileNumber', 'userId'],
+      include: [
+        {
+          required: true,
+          model: UserRole,
+          as: 'roles',
+          attributes: ['roleName'],
+        },
+      ],
+    });
+
+    if (!existingUser) {
+      return next(createAppError('Account does not exist, please sign up first', 404));
+    }
+
+    // Generate new refresh token
+    const refreshToken = Token.generateRefreshToken(
+      existingUser.userId,
+      existingUser.roles[0].roleName // Fixed: roles is array
+    );
+
+    // Update existing token or create new one
+    const [updatedCount] = await Token.update(
+      {
+        refreshToken,
+        expiresAt: Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY),
+        deviceId: req.body.deviceId || null,
+        userAgent: req.headers['user-agent'] || null,
+        ipAddress: req.ip || null,
+        isActive: true,
+        lastUsedAt: new Date(),
+      },
+      {
+        where: {
+          userId: existingUser.userId,
+          isActive: true,
+        },
+      }
+    );
+
+    // If no active token found, create new one
+    if (updatedCount === 0) {
+      await Token.create({
+        userId: existingUser.userId,
+        refreshToken,
+        expiresAt: Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY),
+        deviceId: req.body.deviceId || null,
+        userAgent: req.headers['user-agent'] || null,
+        ipAddress: req.ip || null,
+        isActive: true,
+      });
+    }
+
+    // Generate access token
+    const accessToken = Token.generateAccessToken(
+      existingUser.userId,
+      existingUser.roles[0].roleName // Fixed: roles is array
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successfully',
+      data: {
+        userId: existingUser.userId,
+        role: existingUser.roles[0].roleName,
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { signup, login };

@@ -1,15 +1,16 @@
-const { Sequelize } = require('sequelize');
+const { Sequelize } = require("sequelize");
 
 // Database connection URL from environment
 const DATABASE_URL =
-  process.env.DATABASE_URL || 'postgres://username:password@localhost:5432/database_name';
+  process.env.DATABASE_URL ||
+  "postgres://username:password@localhost:5432/database_name";
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === "production";
 
 // Calculate optimal pool size: (CPU cores × 2) + effective_spindle_count
 // For most servers: 4-8 cores = 10-20 max connections
 const sequelize = new Sequelize(DATABASE_URL, {
-  dialect: 'postgres',
+  dialect: "postgres",
 
   // Connection pool configuration
   pool: {
@@ -64,11 +65,11 @@ const sequelize = new Sequelize(DATABASE_URL, {
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✓ Database connection established successfully');
+    console.log("✓ Database connection established successfully");
 
     // Log pool stats in development
     if (!isProduction) {
-      console.log('Pool configuration:', {
+      console.log("Pool configuration:", {
         max: sequelize.config.pool.max,
         min: sequelize.config.pool.min,
         acquire: sequelize.config.pool.acquire,
@@ -76,7 +77,7 @@ const testConnection = async () => {
       });
     }
   } catch (error) {
-    console.error('✗ Unable to connect to database:', error.message);
+    console.error("✗ Unable to connect to database:", error.message);
     process.exit(1);
   }
 };
@@ -85,9 +86,9 @@ const testConnection = async () => {
 const closeConnection = async () => {
   try {
     await sequelize.close();
-    console.log('Database connection closed gracefully');
+    console.log("Database connection closed gracefully");
   } catch (error) {
-    console.error('Error closing database connection:', error);
+    console.error("Error closing database connection:", error);
   }
 };
 

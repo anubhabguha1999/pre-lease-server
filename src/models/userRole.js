@@ -1,26 +1,26 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/dbConnection');
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/dbConnection");
 
 const UserRole = sequelize.define(
-  'UserRole',
+  "UserRole",
   {
     userId: {
       type: DataTypes.UUID,
-      field: 'user_id',
+      field: "user_id",
       allowNull: false,
       primaryKey: true,
       references: {
-        model: 'users',
-        key: 'user_id',
+        model: "users",
+        key: "user_id",
       },
-      onDelete: 'CASCADE',
+      onDelete: "CASCADE",
     },
     roleName: {
       type: DataTypes.STRING(20),
       allowNull: false,
       primaryKey: true,
       validate: {
-        isIn: [['investor', 'broker', 'owner', 'admin']],
+        isIn: [["investor", "broker", "owner", "admin"]],
       },
     },
     assignedAt: {
@@ -30,7 +30,7 @@ const UserRole = sequelize.define(
     },
   },
   {
-    tableName: 'user_roles',
+    tableName: "user_roles",
     timestamps: false,
   }
 );
