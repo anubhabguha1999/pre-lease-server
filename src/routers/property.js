@@ -5,7 +5,8 @@ const {
   updateProperty,
   getAllAmenities,
   getAllCaretakers,
-  compareProperties, // ✅ Add import
+  compareProperties,
+  getAllProperties,
 } = require("../controllers/property");
 const { authenticateUser, checkPermission } = require("../middlewares/auth");
 const uploadS3 = require("../middlewares/uploadS3");
@@ -48,5 +49,8 @@ router.get("/amenities", authenticateUser, getAllAmenities);
 
 // ✅ Get all caretakers for dropdown
 router.get("/caretakers", authenticateUser, getAllCaretakers);
+
+// ✅ Get all properties with some filters
+router.get("/properties", getAllProperties);
 
 module.exports = router;

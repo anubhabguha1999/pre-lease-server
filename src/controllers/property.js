@@ -16,6 +16,7 @@ const {
   logUpdate,
   buildUpdateValues,
 } = require("../utils/logs");
+const { Op } = require("sequelize");
 
 // ============================================
 // CREATE PROPERTY
@@ -566,7 +567,7 @@ const getAllAmenities = asyncHandler((req, res, next) => {
 
   const requestBodyLog = {
     userId: req.user?.userId || null,
-    endpoint: "/api/amenities",
+    endpoint: "/api/v1/amenities",
   };
 
   return (async () => {
@@ -633,7 +634,7 @@ const getAllCaretakers = asyncHandler((req, res, next) => {
 
   const requestBodyLog = {
     userId: req.user?.userId || null,
-    endpoint: "/api/caretakers",
+    endpoint: "/api/v1/caretakers",
   };
 
   return (async () => {
@@ -1011,10 +1012,369 @@ const compareProperties = asyncHandler((req, res, next) => {
   })().catch(next);
 });
 
+// ============================================
+// GET ALL PROPERTIES WITH FILTERS & PAGINATION
+// ============================================
+const getAllProperties = asyncHandler((req, res, next) => {
+  const requestStartTime = Date.now();
+
+  const {
+    // Pagination
+    page = 1,
+    limit = 10,
+
+    // Pricing Filter
+    minPrice,
+    maxPrice,
+
+    // Property Type Filter
+    propertyTypes, // comma-separated: "Residential,Commercial,Industrial"
+
+    // Annual Rent Filter
+    minRent,
+    maxRent,
+
+    // ROI Filter
+    minROI,
+    maxROI,
+
+    // Tenure Left Filter
+    minTenure,
+    maxTenure,
+
+    // Location Filters
+    city,
+    state,
+    microMarket,
+
+    // Sorting
+    sortBy = "createdAt", // createdAt, sellingPrice, annualGrossRent, grossRentalYield, etc.
+    sortOrder = "DESC", // ASC or DESC
+  } = req.query;
+
+  const requestBodyLog = {
+    page,
+    limit,
+    filters: {
+      pricing: { minPrice, maxPrice },
+      propertyTypes,
+      rent: { minRent, maxRent },
+      roi: { minROI, maxROI },
+      tenure: { minTenure, maxTenure },
+      location: { city, state, microMarket },
+    },
+    sortBy,
+    sortOrder,
+  };
+
+  return (async () => {
+    try {
+      // ============================================
+      // BUILD WHERE CLAUSE
+      // ============================================
+      const whereClause = {
+        isActive: true,
+      };
+
+      // ✅ PRICING FILTER
+      if (minPrice || maxPrice) {
+        whereClause.sellingPrice = {};
+        if (minPrice) {
+          whereClause.sellingPrice[Op.gte] = parseFloat(minPrice);
+        }
+        if (maxPrice) {
+          whereClause.sellingPrice[Op.lte] = parseFloat(maxPrice);
+        }
+      }
+
+      // ✅ PROPERTY TYPE FILTER
+      if (propertyTypes) {
+        const typesArray = propertyTypes.split(",").map((type) => type.trim());
+        whereClause.propertyType = {
+          [Op.in]: typesArray,
+        };
+      }
+
+      // ✅ ANNUAL RENT FILTER
+      if (minRent || maxRent) {
+        whereClause.annualGrossRent = {};
+        if (minRent) {
+          whereClause.annualGrossRent[Op.gte] = parseFloat(minRent);
+        }
+        if (maxRent) {
+          whereClause.annualGrossRent[Op.lte] = parseFloat(maxRent);
+        }
+      }
+
+      // ✅ ROI FILTER (Gross Rental Yield)
+      if (minROI || maxROI) {
+        whereClause.grossRentalYield = {};
+        if (minROI) {
+          whereClause.grossRentalYield[Op.gte] = parseFloat(minROI);
+        }
+        if (maxROI) {
+          whereClause.grossRentalYield[Op.lte] = parseFloat(maxROI);
+        }
+      }
+
+      // ✅ TENURE LEFT FILTER (Calculate from lease end date)
+      if (minTenure || maxTenure) {
+        const now = new Date();
+
+        // Convert tenure years to dates
+        if (minTenure) {
+          const minDate = new Date(now);
+          minDate.setFullYear(minDate.getFullYear() + parseInt(minTenure));
+          whereClause.leaseEndDate = whereClause.leaseEndDate || {};
+          whereClause.leaseEndDate[Op.gte] = minDate;
+        }
+
+        if (maxTenure) {
+          const maxDate = new Date(now);
+          maxDate.setFullYear(maxDate.getFullYear() + parseInt(maxTenure));
+          whereClause.leaseEndDate = whereClause.leaseEndDate || {};
+          whereClause.leaseEndDate[Op.lte] = maxDate;
+        }
+      }
+
+      // ✅ LOCATION FILTERS
+      if (city) {
+        whereClause.city = {
+          [Op.iLike]: `%${city}%`,
+        };
+      }
+
+      if (state) {
+        whereClause.state = {
+          [Op.iLike]: `%${state}%`,
+        };
+      }
+
+      if (microMarket) {
+        whereClause.microMarket = {
+          [Op.iLike]: `%${microMarket}%`,
+        };
+      }
+
+      // ============================================
+      // PAGINATION SETUP
+      // ============================================
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const offset = (pageNumber - 1) * pageSize;
+
+      // ============================================
+      // FETCH PROPERTIES
+      // ============================================
+      const { count, rows: properties } = await Property.findAndCountAll({
+        where: whereClause,
+        attributes: [
+          // Basic Info
+          "propertyId",
+          "propertyType",
+          "carpetArea",
+          "carpetAreaUnit",
+          "completionYear",
+          "lastRefurbishedYear",
+          "buildingGrade",
+          "ownershipType",
+
+          // Parking
+          "parkingTwoWheeler",
+          "parkingFourWheeler",
+
+          // Infrastructure
+          "powerBackup",
+          "numberOfLifts",
+          "hvacType",
+          "furnishingStatus",
+
+          // Legal
+          "titleStatus",
+          "occupancyCertificate",
+          "leaseRegistration",
+          "reraNumber",
+
+          // Lease Details
+          "tenantType",
+          "leaseStartDate",
+          "leaseEndDate",
+          "lockInPeriodYears",
+          "lockInPeriodMonths",
+          "leaseDurationYears",
+
+          // Rental
+          "rentType",
+          "rentPerSqftMonthly",
+          "totalMonthlyRent",
+          "securityDepositType",
+          "securityDepositMonths",
+          "securityDepositAmount",
+
+          // Escalation & Maintenance
+          "escalationFrequencyYears",
+          "annualEscalationPercent",
+          "maintenanceCostsIncluded",
+          "maintenanceType",
+          "maintenanceAmount",
+
+          // Location
+          "microMarket",
+          "city",
+          "state",
+
+          // Financial
+          "sellingPrice",
+          "propertyTaxAnnual",
+          "insuranceAnnual",
+          "otherCostsAnnual",
+          "totalOperatingAnnualCosts",
+          "additionalIncomeAnnual",
+          "annualGrossRent",
+          "grossRentalYield",
+          "netRentalYield",
+          "paybackPeriodYears",
+
+          // Description
+          "description",
+          "additionalDescription",
+
+          // Metadata
+          "createdAt",
+          "updatedAt",
+        ],
+        include: [
+          {
+            model: Amenity,
+            as: "amenities",
+            attributes: ["amenityId", "amenityName"],
+            through: { attributes: [] },
+            where: { isActive: true },
+            required: false,
+          },
+          {
+            model: PropertyMedia,
+            as: "media",
+            attributes: ["mediaId", "mediaType", "fileUrl"],
+            required: false,
+            limit: 1, // First image only for listing
+            separate: true, // Avoid N+1 query issues
+          },
+          {
+            model: Caretaker,
+            as: "caretaker",
+            attributes: ["caretakerId", "caretakerName"],
+            where: { isActive: true },
+            required: false,
+          },
+        ],
+        order: [[sortBy, sortOrder.toUpperCase()]],
+        limit: pageSize,
+        offset: offset,
+        distinct: true, // Important for correct count with includes
+      });
+
+      // ============================================
+      // CALCULATE TENURE LEFT FOR EACH PROPERTY
+      // ============================================
+      const propertiesWithTenure = properties.map((property) => {
+        const propertyData = property.toJSON();
+
+        // Calculate tenure left if lease end date exists
+        if (propertyData.leaseEndDate) {
+          const now = new Date();
+          const leaseEnd = new Date(propertyData.leaseEndDate);
+          const diffTime = leaseEnd - now;
+          const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+          propertyData.tenureLeftYears = Math.max(
+            0,
+            parseFloat(diffYears.toFixed(2))
+          );
+        } else {
+          propertyData.tenureLeftYears = null;
+        }
+
+        return propertyData;
+      });
+
+      // ============================================
+      // PAGINATION METADATA
+      // ============================================
+      const totalPages = Math.ceil(count / pageSize);
+      const hasNextPage = pageNumber < totalPages;
+      const hasPrevPage = pageNumber > 1;
+
+      const responseData = {
+        success: true,
+        message: "Properties fetched successfully",
+        data: propertiesWithTenure,
+        pagination: {
+          currentPage: pageNumber,
+          pageSize: pageSize,
+          totalItems: count,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage,
+        },
+        filters: {
+          applied: {
+            pricing: minPrice || maxPrice ? { minPrice, maxPrice } : null,
+            propertyTypes: propertyTypes || null,
+            rent: minRent || maxRent ? { minRent, maxRent } : null,
+            roi: minROI || maxROI ? { minROI, maxROI } : null,
+            tenure: minTenure || maxTenure ? { minTenure, maxTenure } : null,
+            location:
+              city || state || microMarket
+                ? { city, state, microMarket }
+                : null,
+          },
+        },
+      };
+
+      // Log successful API request
+      await logRequest(
+        req,
+        {
+          userId: req.user?.userId || null,
+          status: 200,
+          body: {
+            success: true,
+            message: "Properties fetched successfully",
+            count: count,
+          },
+          requestBodyLog,
+        },
+        requestStartTime,
+        next
+      );
+
+      return res.status(200).json(responseData);
+    } catch (error) {
+      // Log failed API request
+      await logRequest(
+        req,
+        {
+          userId: req.user?.userId || null,
+          status: error.statusCode || 500,
+          body: { success: false, message: error.message },
+          requestBodyLog,
+          error: error.message,
+          stackTrace: error.stack,
+        },
+        requestStartTime,
+        next
+      );
+
+      return next(error);
+    }
+  })().catch(next);
+});
+
 module.exports = {
   createProperty,
   updateProperty,
   getAllAmenities,
   getAllCaretakers,
   compareProperties,
+  getAllProperties,
 };
