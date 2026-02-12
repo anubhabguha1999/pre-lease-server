@@ -281,6 +281,9 @@ const login = asyncHandler((req, res, next) => {
           "userType",
           "otp",
           "otpExpiresAt",
+          "firstName",
+          "lastName",
+          "email",
         ],
         include: [
           {
@@ -371,6 +374,8 @@ const login = asyncHandler((req, res, next) => {
           role: userRole.roleName,
           accessToken,
           refreshToken,
+          name: `${existingUser.firstName} ${existingUser.lastName}`,
+          email: existingUser.email,
         },
       };
 
