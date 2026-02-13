@@ -417,4 +417,158 @@ const login = asyncHandler((req, res, next) => {
   })().catch(next);
 });
 
-module.exports = { signup, login };
+// ============================================
+// REFRESH ACCESS TOKEN
+// ============================================
+/**
+ * @route   GET /api/v1/auth/refresh-token
+ * @desc    Generate new access token using valid refresh token
+ * @access  Public (requires valid refresh token in Authorization header)
+ * @header  Authorization: Bearer <refreshToken>
+ * @returns New access token with user details
+ */
+const refreshAccessToken = asyncHandler((req, res, next) => {
+  const requestStartTime = Date.now();
+
+  // Extract refresh token from Authorization header
+  const authHeader = req.headers.authorization;
+  const refreshToken =
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : null;
+
+  // Prepare log-safe request body
+  const requestBodyLog = {
+    endpoint: "/api/v1/auth/refresh-token",
+    hasRefreshToken: !!refreshToken,
+    refreshToken: refreshToken ? "[REDACTED]" : null,
+  };
+
+  return (async () => {
+    try {
+      if (!refreshToken) {
+        throw createAppError(
+          "Refresh token is required in Authorization header",
+          401
+        );
+      }
+
+      // ============================================
+      // VERIFY REFRESH TOKEN FROM DATABASE
+      // ============================================
+      // Check if refresh token exists in database and is valid
+      const verification = await Token.verifyRefreshToken(refreshToken);
+
+      if (!verification.valid) {
+        throw createAppError(
+          verification.message || "Invalid or expired refresh token",
+          401
+        );
+      }
+
+      // Extract decoded payload and token record
+      const { decoded, token: tokenRecord } = verification;
+
+      const user = await User.findOne({
+        where: { userId: decoded._id, isActive: true },
+        attributes: [
+          "userId",
+          "firstName",
+          "lastName",
+          "email",
+          "mobileNumber",
+        ],
+        include: [
+          {
+            model: Role,
+            as: "roles",
+            through: { attributes: [] },
+            attributes: ["roleId", "roleName", "roleType"],
+            where: { isActive: true },
+          },
+        ],
+      });
+
+      // Check if user exists and is active
+      if (!user) {
+        throw createAppError("User not found or account deactivated", 404);
+      }
+
+      // Check if user has active role
+      if (!user.roles || user.roles.length === 0) {
+        throw createAppError("No active role assigned to this account", 403);
+      }
+
+      const userRole = user.roles[0];
+
+      // ============================================
+      //  GENERATE NEW ACCESS TOKEN
+      // ============================================
+      const newAccessToken = Token.generateAccessToken(
+        user.userId,
+        userRole.roleName
+      );
+
+      // Track when refresh token was last used
+      await Token.update(
+        { lastUsedAt: new Date() },
+        { where: { tokenId: tokenRecord.tokenId } }
+      );
+
+      const data = {
+        userId: user.userId,
+        role: userRole.roleName,
+        accessToken: newAccessToken,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        // Note: Refresh token is NOT returned for security
+        // Client should keep using the existing refresh token
+      };
+
+      await logRequest(
+        req,
+        {
+          userId: user.userId,
+          status: 200,
+          body: {
+            success: true,
+            message: "Access token refreshed successfully",
+          },
+          requestBodyLog: {
+            ...requestBodyLog,
+            userId: user.userId,
+            role: userRole.roleName,
+          },
+        },
+        requestStartTime,
+        next
+      );
+
+      return sendEncodedResponse(
+        res,
+        200,
+        true,
+        "Access token refreshed successfully",
+        data
+      );
+    } catch (error) {
+      await logRequest(
+        req,
+        {
+          userId: null,
+          status: error.statusCode || 500,
+          body: { success: false, message: error.message },
+          requestBodyLog,
+          error: error.message,
+          stackTrace: error.stack,
+        },
+        requestStartTime,
+        next
+      );
+
+      return next(error);
+    }
+  })().catch(next);
+});
+
+module.exports = { signup, login, refreshAccessToken };
