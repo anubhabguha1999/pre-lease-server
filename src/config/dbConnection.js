@@ -26,12 +26,12 @@ const sequelize = new Sequelize(DATABASE_URL, {
   dialectOptions: {
     statement_timeout: 30000, // Query timeout: 30 seconds
     idle_in_transaction_session_timeout: 60000, // Transaction timeout
-    ...(isProduction && {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false, // For hosted databases (AWS RDS, etc)
-      },
-    }),
+
+    // ✅ ALWAYS enable SSL (for both development and production)
+    ssl: {
+      require: true,
+      rejectUnauthorized: false, // ✅ Important for cloud databases
+    },
   },
 
   // Logging
@@ -66,7 +66,7 @@ const sequelize = new Sequelize(DATABASE_URL, {
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log("Database connection established successfully");
+    console.log("✓ Database connection established successfully");
 
     // Log pool stats in development
     if (!isProduction) {
