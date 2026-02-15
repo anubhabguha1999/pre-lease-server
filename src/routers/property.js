@@ -7,6 +7,7 @@ const {
   getAllCaretakers,
   compareProperties,
   getAllProperties,
+  getPropertyById,
 } = require("../controllers/property");
 const { authenticateUser, checkPermission } = require("../middlewares/auth");
 const { multerUpload, uploadToGCS } = require("../middlewares/uploadGCS");
@@ -54,5 +55,8 @@ router.get("/caretakers", authenticateUser, getAllCaretakers);
 
 // ✅ Get all properties with some filters
 router.get("/properties", getAllProperties);
+
+// ✅ Get single property by ID
+router.get("/properties/:propertyId", getPropertyById);
 
 module.exports = router;
