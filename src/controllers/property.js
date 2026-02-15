@@ -21,6 +21,7 @@ const {
 const { Op } = require("sequelize");
 const { sendEncodedResponse } = require("../utils/responseEncoder");
 const { attachSignedUrls } = require("../utils/gcsHelper");
+const { getIO } = require("../config/socket");
 
 const ALLOWED_UPDATE_FIELDS = [
   "propertyType",
@@ -485,6 +486,21 @@ const createProperty = asyncHandler(async (req, res, next) => {
       requestStartTime
     );
 
+    try {
+      const io = getIO();
+      io.emit("property:created", {
+        propertyId: result.property.propertyId,
+        city: result.property.city,
+        state: result.property.state,
+        propertyType: result.property.propertyType,
+        createdBy: req.user.userId,
+        createdByRole: result.createdByRole,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (socketErr) {
+      console.error("Socket notification failed:", socketErr.message);
+    }
+
     return sendEncodedResponse(
       res,
       201,
@@ -713,6 +729,22 @@ const updateProperty = asyncHandler(async (req, res, next) => {
       },
       requestStartTime
     );
+
+    try {
+      const io = getIO();
+      const prop = result.property;
+      const notifyUserIds = [prop.ownerId, prop.brokerId].filter(Boolean);
+      notifyUserIds.forEach((uid) => {
+        io.to(`user:${uid}`).emit("property:updated", {
+          propertyId: prop.propertyId,
+          updatedFields: result.updatedFields,
+          updatedBy: req.user.userId,
+          timestamp: new Date().toISOString(),
+        });
+      });
+    } catch (socketErr) {
+      console.error("Socket notification failed:", socketErr.message);
+    }
 
     return sendEncodedResponse(
       res,

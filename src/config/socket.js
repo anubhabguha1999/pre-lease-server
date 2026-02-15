@@ -1,0 +1,36 @@
+const { Server } = require("socket.io");
+
+let io = null;
+
+const initSocket = (httpServer) => {
+  io = new Server(httpServer, {
+    cors: {
+      origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+      credentials: true,
+    },
+  });
+
+  io.on("connection", (socket) => {
+    const { userId } = socket.handshake.query;
+
+    if (userId) {
+      socket.join(`user:${userId}`);
+      console.log(`Socket connected: ${socket.id} (user: ${userId})`);
+    }
+
+    socket.on("disconnect", () => {
+      console.log(`Socket disconnected: ${socket.id}`);
+    });
+  });
+
+  return io;
+};
+
+const getIO = () => {
+  if (!io) {
+    throw new Error("Socket.IO not initialized. Call initSocket first.");
+  }
+  return io;
+};
+
+module.exports = { initSocket, getIO };

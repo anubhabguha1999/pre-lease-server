@@ -7,6 +7,7 @@ const {
   deleteUser,
   getAllUsers,
   createSuperAdmin,
+  assignProperty,
 } = require("../controllers/admin");
 const { authenticateUser, checkPermission } = require("../middlewares/auth");
 
@@ -79,5 +80,12 @@ router.delete(
  * @access  Public (requires secret key)
  */
 router.post("/create-super-admin", superAdminRateLimiter, createSuperAdmin);
+
+router.put(
+  "/properties/:propertyId/assign",
+  authenticateUser,
+  checkPermission("PROPERTY_UPDATE"),
+  assignProperty
+);
 
 module.exports = router;

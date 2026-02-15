@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const { User, Role, UserRole } = require("../models");
+const { User, Role, UserRole, Property } = require("../models");
 const {
   validateRequiredFields,
   isValidEmail,
@@ -15,25 +15,12 @@ const {
 } = require("../utils/logs");
 const { sequelize } = require("../config/dbConnection");
 const { sendEncodedResponse } = require("../utils/responseEncoder");
+const { getIO } = require("../config/socket");
 
-// ============================================
-// CREATE USER (Super Admin Only)
-// ============================================
-/**
- * @desc    Create new admin user (Sales Executive, Sales Manager, Admin, Super Admin)
- * @route   POST /api/v1/admin/users
- * @access  Private (Super Admin only with USER_CREATE permission)
- */
 const createUser = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
 
-  const {
-    firstName,
-    lastName,
-    email,
-    mobileNumber,
-    roleName, // Sales Executive, Sales Manager, Admin, Super Admin
-  } = req.body;
+  const { firstName, lastName, email, mobileNumber, roleName } = req.body;
 
   const requestBodyLog = {
     email,
@@ -45,9 +32,6 @@ const createUser = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ============================================
-    // VALIDATION: Required Fields
-    // ============================================
     const requiredFields = [
       "firstName",
       "lastName",
@@ -63,9 +47,6 @@ const createUser = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Email & Phone Format
-    // ============================================
     if (!isValidEmail(email)) {
       throw createAppError("Invalid email format", 400);
     }
@@ -77,9 +58,6 @@ const createUser = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Check Target Role
-    // ============================================
     const targetRole = await Role.findOne({
       where: { roleName, roleType: "admin", isActive: true },
     });
@@ -88,7 +66,6 @@ const createUser = asyncHandler(async (req, res, next) => {
       throw createAppError(`Invalid role: ${roleName}`, 400);
     }
 
-    // Block client roles explicitly
     if (targetRole.roleType === "client") {
       throw createAppError(
         "Cannot create client roles (Owner, Investor, Broker). These are created via signup API.",
@@ -96,13 +73,8 @@ const createUser = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Check if user already exists
-    // ============================================
     const existingUser = await User.findOne({
-      where: {
-        [Op.or]: [{ email }, { mobileNumber }],
-      },
+      where: { [Op.or]: [{ email }, { mobileNumber }] },
     });
 
     if (existingUser) {
@@ -114,24 +86,19 @@ const createUser = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // ============================================
-    // START TRANSACTION: Create User + Assign Role
-    // ============================================
     const result = await sequelize.transaction(async (t) => {
-      // Create user
       const newUser = await User.create(
         {
           firstName,
           lastName,
           email,
           mobileNumber,
-          userType: "admin", // Always admin type
+          userType: "admin",
           isActive: true,
         },
         { transaction: t }
       );
 
-      // Assign role
       await UserRole.create(
         {
           userId: newUser.userId,
@@ -141,7 +108,6 @@ const createUser = asyncHandler(async (req, res, next) => {
         { transaction: t }
       );
 
-      // ✅ CREATE AUDIT LOG
       await logInsert({
         userId: req.user.userId,
         entityType: "User",
@@ -162,15 +128,9 @@ const createUser = asyncHandler(async (req, res, next) => {
         transaction: t,
       });
 
-      return {
-        user: newUser,
-        role: targetRole,
-      };
+      return { user: newUser, role: targetRole };
     });
 
-    // ============================================
-    // PREPARE RESPONSE
-    // ============================================
     const data = {
       userId: result.user.userId,
       name: `${result.user.firstName} ${result.user.lastName}`,
@@ -180,9 +140,6 @@ const createUser = asyncHandler(async (req, res, next) => {
       userType: result.user.userType,
     };
 
-    // ============================================
-    // LOG SUCCESS
-    // ============================================
     await logRequest(
       req,
       {
@@ -205,9 +162,6 @@ const createUser = asyncHandler(async (req, res, next) => {
       data
     );
   } catch (error) {
-    // ============================================
-    // LOG FAILURE
-    // ============================================
     await logRequest(
       req,
       {
@@ -225,14 +179,6 @@ const createUser = asyncHandler(async (req, res, next) => {
   }
 });
 
-// ============================================
-// UPDATE USER (Super Admin/Admin)
-// ============================================
-/**
- * @desc    Update user details (name, email, phone, role)
- * @route   PUT /api/v1/admin/users/:userId
- * @access  Private (Super Admin/Admin with USER_UPDATE permission)
- */
 const updateUser = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
   const { userId } = req.params;
@@ -247,9 +193,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ============================================
-    // VALIDATION: Check if user exists
-    // ============================================
     const existingUser = await User.findOne({
       where: { userId },
       include: [
@@ -266,9 +209,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       throw createAppError("User not found", 404);
     }
 
-    // ============================================
-    // ✅ RESTRICTION: Cannot update client users (Owner, Broker, Investor)
-    // ============================================
     const currentRole = existingUser.roles[0];
     if (currentRole.roleType === "client") {
       throw createAppError(
@@ -277,9 +217,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Email & Phone uniqueness
-    // ============================================
     if (email || mobileNumber) {
       const duplicateUser = await User.findOne({
         where: {
@@ -301,9 +238,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // ============================================
-    // VALIDATION: New role check
-    // ============================================
     let newRole = null;
     if (roleName && roleName !== currentRole.roleName) {
       newRole = await Role.findOne({
@@ -315,14 +249,9 @@ const updateUser = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // ✅ Store old values for audit log
     const oldRecord = existingUser.toJSON();
 
-    // ============================================
-    // START TRANSACTION: Update User
-    // ============================================
     const result = await sequelize.transaction(async (t) => {
-      // Prepare update data
       const updateData = {};
       if (firstName) updateData.firstName = firstName;
       if (lastName) updateData.lastName = lastName;
@@ -330,23 +259,17 @@ const updateUser = asyncHandler(async (req, res, next) => {
       if (mobileNumber) updateData.mobileNumber = mobileNumber;
       if (isActive !== undefined) updateData.isActive = isActive;
 
-      // Update user
       if (Object.keys(updateData).length > 0) {
         await existingUser.update(updateData, { transaction: t });
       }
 
-      // Update role if changed
       if (newRole) {
         await UserRole.update(
           { roleId: newRole.roleId },
-          {
-            where: { userId },
-            transaction: t,
-          }
+          { where: { userId }, transaction: t }
         );
       }
 
-      // ✅ BUILD AUDIT LOG
       const { oldValues, newValues } = buildUpdateValues(
         oldRecord,
         updateData
@@ -357,7 +280,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       }
       newValues.updatedBy = req.userRole;
 
-      // ✅ CREATE AUDIT LOG
       await logUpdate({
         userId: req.user.userId,
         entityType: "User",
@@ -370,15 +292,9 @@ const updateUser = asyncHandler(async (req, res, next) => {
         transaction: t,
       });
 
-      return {
-        user: existingUser,
-        newRole: newRole || currentRole,
-      };
+      return { user: existingUser, newRole: newRole || currentRole };
     });
 
-    // ============================================
-    // PREPARE RESPONSE
-    // ============================================
     const data = {
       userId: result.user.userId,
       name: `${result.user.firstName} ${result.user.lastName}`,
@@ -388,9 +304,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       isActive: result.user.isActive,
     };
 
-    // ============================================
-    // LOG SUCCESS
-    // ============================================
     await logRequest(
       req,
       {
@@ -410,9 +323,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
       data
     );
   } catch (error) {
-    // ============================================
-    // LOG FAILURE
-    // ============================================
     await logRequest(
       req,
       {
@@ -430,14 +340,6 @@ const updateUser = asyncHandler(async (req, res, next) => {
   }
 });
 
-// ============================================
-// DELETE USER (Super Admin/Admin)
-// ============================================
-/**
- * @desc    Soft delete user (set isActive = false)
- * @route   DELETE /api/v1/admin/users/:userId
- * @access  Private (Super Admin/Admin with USER_DELETE permission)
- */
 const deleteUser = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
   const { userId } = req.params;
@@ -448,9 +350,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ============================================
-    // VALIDATION: Check if user exists
-    // ============================================
     const existingUser = await User.findOne({
       where: { userId, isActive: true },
       include: [
@@ -467,9 +366,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
       throw createAppError("User not found or already deleted", 404);
     }
 
-    // ============================================
-    // ✅ RESTRICTION: Cannot delete client users
-    // ============================================
     const currentRole = existingUser.roles[0];
     if (currentRole.roleType === "client") {
       throw createAppError(
@@ -478,21 +374,13 @@ const deleteUser = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // ✅ RESTRICTION: Cannot delete yourself
-    // ============================================
     if (userId === req.user.userId) {
       throw createAppError("Cannot delete your own account", 403);
     }
 
-    // ============================================
-    // START TRANSACTION: Soft Delete
-    // ============================================
     await sequelize.transaction(async (t) => {
-      // Soft delete user
       await existingUser.update({ isActive: false }, { transaction: t });
 
-      // ✅ CREATE AUDIT LOG
       await logUpdate({
         userId: req.user.userId,
         entityType: "User",
@@ -506,9 +394,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
       });
     });
 
-    // ============================================
-    // PREPARE RESPONSE
-    // ============================================
     const data = {
       userId: existingUser.userId,
       name: `${existingUser.firstName} ${existingUser.lastName}`,
@@ -516,9 +401,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
       deletedAt: new Date(),
     };
 
-    // ============================================
-    // LOG SUCCESS
-    // ============================================
     await logRequest(
       req,
       {
@@ -538,9 +420,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
       data
     );
   } catch (error) {
-    // ============================================
-    // LOG FAILURE
-    // ============================================
     await logRequest(
       req,
       {
@@ -558,14 +437,6 @@ const deleteUser = asyncHandler(async (req, res, next) => {
   }
 });
 
-// ============================================
-// GET ALL USERS (Super Admin/Admin)
-// ============================================
-/**
- * @desc    Get all admin users with pagination
- * @route   GET /api/v1/admin/users
- * @access  Private (Super Admin/Admin with USER_VIEW permission)
- */
 const getAllUsers = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
 
@@ -578,35 +449,21 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ============================================
-    // BUILD WHERE CLAUSE
-    // ============================================
-    const whereClause = {
-      userType: "admin", // ✅ Only admin users
-    };
+    const whereClause = { userType: "admin" };
 
     if (isActive !== undefined) {
       whereClause.isActive = isActive === "true";
     }
 
-    // ============================================
-    // BUILD ROLE FILTER
-    // ============================================
     const roleWhere = {};
     if (roleName) {
       roleWhere.roleName = roleName;
     }
 
-    // ============================================
-    // PAGINATION SETUP
-    // ============================================
     const pageNumber = parseInt(page);
     const pageSize = parseInt(limit);
     const offset = (pageNumber - 1) * pageSize;
 
-    // ============================================
-    // FETCH USERS
-    // ============================================
     const { count, rows: users } = await User.findAndCountAll({
       where: whereClause,
       attributes: [
@@ -633,9 +490,6 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       distinct: true,
     });
 
-    // ============================================
-    // PAGINATION METADATA
-    // ============================================
     const totalPages = Math.ceil(count / pageSize);
     const hasNextPage = pageNumber < totalPages;
     const hasPrevPage = pageNumber > 1;
@@ -649,9 +503,6 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       usersPerPage: pageSize,
     };
 
-    // ============================================
-    // FORMAT RESPONSE
-    // ============================================
     const formattedUsers = users.map((user) => ({
       userId: user.userId,
       name: `${user.firstName} ${user.lastName}`,
@@ -662,9 +513,6 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       createdAt: user.createdAt,
     }));
 
-    // ============================================
-    // LOG SUCCESS
-    // ============================================
     await logRequest(
       req,
       {
@@ -685,9 +533,6 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
       pagination
     );
   } catch (error) {
-    // ============================================
-    // LOG FAILURE
-    // ============================================
     await logRequest(
       req,
       {
@@ -705,24 +550,10 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
   }
 });
 
-// ============================================
-// CREATE FIRST SUPER ADMIN (One-Time Only, No Password)
-// ============================================
-/**
- * @desc    Create first Super Admin account (no authentication/password required)
- * @route   POST /api/v1/auth/create-super-admin
- * @access  Public (only works if no Super Admin exists)
- */
 const createSuperAdmin = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
 
-  const {
-    firstName,
-    lastName,
-    email,
-    mobileNumber,
-    secretKey, // Extra security: require a secret key from .env
-  } = req.body;
+  const { firstName, lastName, email, mobileNumber, secretKey } = req.body;
 
   const requestBodyLog = {
     email,
@@ -733,9 +564,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ============================================
-    // ✅ SECURITY CHECK 1: Secret Key Validation
-    // ============================================
     const SUPER_ADMIN_SECRET = process.env.SUPER_ADMIN_CREATION_SECRET;
 
     if (!SUPER_ADMIN_SECRET) {
@@ -749,9 +577,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       throw createAppError("Invalid secret key", 403);
     }
 
-    // ============================================
-    // ✅ SECURITY CHECK 2: Check if Super Admin already exists
-    // ============================================
     const superAdminRole = await Role.findOne({
       where: { roleName: "Super Admin", isActive: true },
     });
@@ -778,9 +603,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Required Fields
-    // ============================================
     const requiredFields = ["firstName", "lastName", "email", "mobileNumber"];
     const missing = validateRequiredFields(requiredFields, req.body);
     if (missing.length > 0) {
@@ -790,9 +612,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Email & Phone Format
-    // ============================================
     if (!isValidEmail(email)) {
       throw createAppError("Invalid email format", 400);
     }
@@ -804,13 +623,8 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // ============================================
-    // VALIDATION: Check if email/phone already exists
-    // ============================================
     const existingUser = await User.findOne({
-      where: {
-        [Op.or]: [{ email }, { mobileNumber }],
-      },
+      where: { [Op.or]: [{ email }, { mobileNumber }] },
     });
 
     if (existingUser) {
@@ -822,11 +636,7 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // ============================================
-    // START TRANSACTION: Create Super Admin
-    // ============================================
     const result = await sequelize.transaction(async (t) => {
-      // Create user (no password field)
       const newSuperAdmin = await User.create(
         {
           firstName,
@@ -839,17 +649,15 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
         { transaction: t }
       );
 
-      // Assign Super Admin role
       await UserRole.create(
         {
           userId: newSuperAdmin.userId,
           roleId: superAdminRole.roleId,
-          assignedBy: null, // System-assigned
+          assignedBy: null,
         },
         { transaction: t }
       );
 
-      // ✅ CREATE AUDIT LOG
       await logInsert({
         userId: newSuperAdmin.userId,
         entityType: "User",
@@ -863,7 +671,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
           userType: newSuperAdmin.userType,
           roleName: "Super Admin",
           createdBy: "SYSTEM",
-          note: "First Super Admin account created (passwordless)",
         },
         tableName: "users",
         ipAddress: req.ip,
@@ -871,15 +678,9 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
         transaction: t,
       });
 
-      return {
-        user: newSuperAdmin,
-        role: superAdminRole,
-      };
+      return { user: newSuperAdmin, role: superAdminRole };
     });
 
-    // ============================================
-    // PREPARE RESPONSE
-    // ============================================
     const data = {
       userId: result.user.userId,
       name: `${result.user.firstName} ${result.user.lastName}`,
@@ -888,9 +689,6 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       role: result.role.roleName,
     };
 
-    // ============================================
-    // LOG SUCCESS
-    // ============================================
     await logRequest(
       req,
       {
@@ -916,13 +714,142 @@ const createSuperAdmin = asyncHandler(async (req, res, next) => {
       data
     );
   } catch (error) {
-    // ============================================
-    // LOG FAILURE
-    // ============================================
     await logRequest(
       req,
       {
         userId: null,
+        status: error.statusCode || 500,
+        body: { success: false, message: error.message },
+        requestBodyLog,
+        error: error.message,
+        stackTrace: error.stack,
+      },
+      requestStartTime
+    );
+
+    return next(error);
+  }
+});
+
+const assignProperty = asyncHandler(async (req, res, next) => {
+  const requestStartTime = Date.now();
+  const { propertyId } = req.params;
+  const { userId, assignAs } = req.body;
+
+  const requestBodyLog = {
+    propertyId,
+    targetUserId: userId,
+    assignAs,
+    assignedBy: req.user.userId,
+  };
+
+  try {
+    if (!userId || !assignAs) {
+      throw createAppError("userId and assignAs are required", 400);
+    }
+
+    if (!["owner", "broker"].includes(assignAs)) {
+      throw createAppError("assignAs must be 'owner' or 'broker'", 400);
+    }
+
+    const property = await Property.findOne({
+      where: { propertyId, isActive: true },
+    });
+
+    if (!property) {
+      throw createAppError("Property not found", 404);
+    }
+
+    const targetUser = await User.findOne({
+      where: { userId, isActive: true },
+      attributes: ["userId", "firstName", "lastName", "email"],
+      include: [
+        {
+          model: Role,
+          as: "roles",
+          through: { attributes: [] },
+          attributes: ["roleName"],
+          where: { isActive: true },
+        },
+      ],
+    });
+
+    if (!targetUser) {
+      throw createAppError("Target user not found or inactive", 404);
+    }
+
+    const oldRecord = property.toJSON();
+    const updateField = assignAs === "owner" ? "ownerId" : "brokerId";
+
+    const result = await sequelize.transaction(async (t) => {
+      await property.update({ [updateField]: userId }, { transaction: t });
+
+      const { oldValues, newValues } = buildUpdateValues(oldRecord, {
+        [updateField]: userId,
+      });
+      newValues.assignedBy = req.user.userId;
+
+      await logUpdate({
+        userId: req.user.userId,
+        entityType: "Property",
+        recordId: propertyId,
+        oldValues,
+        newValues,
+        tableName: "properties",
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+        transaction: t,
+      });
+
+      return property;
+    });
+
+    // Emit WebSocket notification to the assigned user
+    try {
+      const io = getIO();
+      io.to(`user:${userId}`).emit("property:assigned", {
+        propertyId,
+        assignedAs: assignAs,
+        city: result.city,
+        state: result.state,
+        propertyType: result.propertyType,
+        assignedBy: req.user.userId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (socketErr) {
+      console.error("Socket notification failed:", socketErr.message);
+    }
+
+    const data = {
+      propertyId,
+      [updateField]: userId,
+      assignedTo: `${targetUser.firstName} ${targetUser.lastName}`,
+      assignedAs: assignAs,
+    };
+
+    await logRequest(
+      req,
+      {
+        userId: req.user.userId,
+        status: 200,
+        body: { success: true, message: "Property assigned successfully" },
+        requestBodyLog,
+      },
+      requestStartTime
+    );
+
+    return sendEncodedResponse(
+      res,
+      200,
+      true,
+      "Property assigned successfully",
+      data
+    );
+  } catch (error) {
+    await logRequest(
+      req,
+      {
+        userId: req.user?.userId || null,
         status: error.statusCode || 500,
         body: { success: false, message: error.message },
         requestBodyLog,
@@ -942,4 +869,5 @@ module.exports = {
   deleteUser,
   getAllUsers,
   createSuperAdmin,
+  assignProperty,
 };
