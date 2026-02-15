@@ -32,6 +32,8 @@ const createProperty = asyncHandler((req, res, next) => {
     // Basic Details
     propertyType,
     carpetAreaSqft,
+    carpetAreaUnit,
+    completionYear, // ✅ ADD THIS
     lastRefurbished,
     ownershipType,
     buildingGrade,
@@ -45,7 +47,6 @@ const createProperty = asyncHandler((req, res, next) => {
     numberOfLifts,
     hvacType,
     furnishingStatus,
-    buildingMaintainedBy,
 
     // Legal Details
     titleStatus,
@@ -54,6 +55,44 @@ const createProperty = asyncHandler((req, res, next) => {
     hasPendingLitigation,
     litigationDetails,
     reraNumber,
+
+    // Lease & Tenant Details
+    tenantType,
+    leaseStartDate,
+    leaseEndDate,
+    lockInPeriodYears,
+    lockInPeriodMonths,
+    leaseDurationYears,
+
+    //  Rental Details
+    rentType,
+    rentPerSqftMonthly,
+    totalMonthlyRent,
+
+    //  Security Deposit
+    securityDepositType,
+    securityDepositMonths,
+    securityDepositAmount,
+
+    //  Escalation & Maintenance
+    escalationFrequencyYears,
+    annualEscalationPercent,
+    maintenanceCostsIncluded,
+    maintenanceType,
+    maintenanceAmount,
+
+    //  Financial Analytics
+    sellingPrice,
+    propertyTaxAnnual,
+    insuranceAnnual,
+    otherCostsAnnual,
+    additionalIncomeAnnual,
+
+    //  Calculated Metrics
+    annualGrossRent,
+    grossRentalYield,
+    netRentalYield,
+    paybackPeriodYears,
 
     // Location
     microMarket,
@@ -72,8 +111,7 @@ const createProperty = asyncHandler((req, res, next) => {
     amenityIds,
     caretakerId,
 
-    // ✅ NEW: Connectivity Details (Array of objects)
-    // Format: [{ connectivityType: "Railway Station", name: "Mumbai Central", distanceKm: 2.5 }, ...]
+    // Connectivity & Certifications
     connectivityDetails,
 
     // ✅ NEW: Certifications (Array or object)
@@ -83,20 +121,53 @@ const createProperty = asyncHandler((req, res, next) => {
 
   // Prepare log-safe request body
   const requestBodyLog = {
+    // Basic Info
     propertyType,
     carpetAreaSqft,
+    carpetAreaUnit,
+    completionYear, // ✅ ADDED
+    lastRefurbished,
+    ownershipType,
+    buildingGrade,
+
+    // Location
     city,
     state,
-    ownershipType,
+    microMarket,
+
+    // Lease & Tenant
+    tenantType, // ✅ ADDED
+    hasLeaseDetails: !!(leaseStartDate || leaseEndDate), // ✅ ADDED
+    leaseDurationYears, // ✅ ADDED
+
+    // Rental
+    rentType, // ✅ ADDED
+    hasRentalDetails: !!(rentPerSqftMonthly || totalMonthlyRent), // ✅ ADDED
+
+    // Financial
+    hasFinancialData: !!(sellingPrice || propertyTaxAnnual || insuranceAnnual), // ✅ ADDED
+    hasCalculatedMetrics: !!(
+      annualGrossRent ||
+      grossRentalYield ||
+      netRentalYield
+    ), // ✅ ADDED
+
+    // User & Role
     userRole: req.userRole,
+
+    // Relationships
+    caretakerId: caretakerId || null,
+    amenityCount: amenityIds ? amenityIds.length : 0,
+
+    // Media
     hasMedia: req.files && req.files.length > 0,
     mediaCount: req.files ? req.files.length : 0,
-    amenityCount: amenityIds ? amenityIds.length : 0,
-    caretakerId: caretakerId || null,
-    connectivityCount: connectivityDetails ? connectivityDetails.length : 0, // ✅ Added
+
+    // Connectivity & Certifications
+    connectivityCount: connectivityDetails ? connectivityDetails.length : 0,
     certificationsCount: certifications
       ? Object.keys(certifications).filter((k) => certifications[k]).length
-      : 0, // ✅ Added
+      : 0,
   };
 
   return (async () => {
@@ -189,21 +260,23 @@ const createProperty = asyncHandler((req, res, next) => {
         const propertyData = {
           // Basic Details
           propertyType: propertyType || null,
-          carpetAreaSqft: carpetAreaSqft || null,
-          lastRefurbished: lastRefurbished || null,
+          carpetArea: carpetAreaSqft || null, // Note: model uses carpetArea
+          carpetAreaUnit: carpetAreaUnit || "Sq. Feet", // Default
+          completionYear: completionYear || null, // ✅ ADD THIS
+          lastRefurbishedYear: lastRefurbished || null,
           ownershipType: ownershipType || null,
           buildingGrade: buildingGrade || null,
 
           // Parking
-          parkingFourWheeler: parkingSlots || null,
-          parkingTworWheeler: parkingRatio || null,
+          parkingFourWheeler: parkingSlots || 0,
+          parkingTwoWheeler: parkingRatio || 0,
 
           // Infrastructure
-          powerBackupKva: powerBackupKva || null,
+          powerBackup: powerBackupKva || null,
           numberOfLifts: numberOfLifts || null,
           hvacType: hvacType || null,
           furnishingStatus: furnishingStatus || null,
-          buildingMaintainedBy: buildingMaintainedBy || null,
+          maintainedById: caretakerId || null, // Note: model uses maintainedById
 
           // Legal Details
           titleStatus: titleStatus || null,
@@ -214,6 +287,31 @@ const createProperty = asyncHandler((req, res, next) => {
           litigationDetails: litigationDetails || null,
           reraNumber: reraNumber || null,
 
+          // ✅ ADD THESE: Lease & Tenant Details
+          tenantType: tenantType || null,
+          leaseStartDate: leaseStartDate || null,
+          leaseEndDate: leaseEndDate || null,
+          lockInPeriodYears: lockInPeriodYears || null,
+          lockInPeriodMonths: lockInPeriodMonths || null,
+          leaseDurationYears: leaseDurationYears || null,
+
+          // Rental Details
+          rentType: rentType || "Per Sq Ft",
+          rentPerSqftMonthly: rentPerSqftMonthly || null,
+          totalMonthlyRent: totalMonthlyRent || null,
+
+          // Security Deposit
+          securityDepositType: securityDepositType || "Months of Rent",
+          securityDepositMonths: securityDepositMonths || null,
+          securityDepositAmount: securityDepositAmount || null,
+
+          // Escalation & Maintenance
+          escalationFrequencyYears: escalationFrequencyYears || null,
+          annualEscalationPercent: annualEscalationPercent || null,
+          maintenanceCostsIncluded: maintenanceCostsIncluded || null,
+          maintenanceType: maintenanceType || null,
+          maintenanceAmount: maintenanceAmount || null,
+
           // Location
           microMarket: microMarket || null,
           city,
@@ -223,12 +321,26 @@ const createProperty = asyncHandler((req, res, next) => {
           demandDrivers: demandDrivers || null,
           upcomingDevelopments: upcomingDevelopments || null,
 
-          // Property Description
+          // Description
           description: description || null,
-          otherAmenities: otherAmenities || null,
+          additionalDescription: otherAmenities || null,
 
-          // Caretaker
-          caretakerId: caretakerId || null,
+          //  Financial Analytics
+          sellingPrice: sellingPrice || null,
+          propertyTaxAnnual: propertyTaxAnnual || null,
+          insuranceAnnual: insuranceAnnual || null,
+          otherCostsAnnual: otherCostsAnnual || null,
+          totalOperatingAnnualCosts:
+            parseFloat(propertyTaxAnnual || 0) +
+              parseFloat(insuranceAnnual || 0) +
+              parseFloat(otherCostsAnnual || 0) || null,
+          additionalIncomeAnnual: additionalIncomeAnnual || null,
+
+          // Calculated Metrics
+          annualGrossRent: annualGrossRent || null,
+          grossRentalYield: grossRentalYield || null,
+          netRentalYield: netRentalYield || null,
+          paybackPeriodYears: paybackPeriodYears || null,
 
           // Metadata
           isActive: true,
