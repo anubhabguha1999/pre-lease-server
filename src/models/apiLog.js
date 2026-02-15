@@ -1,106 +1,35 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/dbConnection");
+const mongoose = require("mongoose");
 
-const ApiLog = sequelize.define(
-  "ApiLog",
+const apiLogSchema = new mongoose.Schema(
   {
-    logId: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-      allowNull: false,
-    },
-    userId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      // Foreign key managed by association in index.js
-    },
-
-    // Request Details
-    httpMethod: {
-      type: DataTypes.STRING(10),
-      allowNull: false,
-    },
-    endpoint: {
-      type: DataTypes.STRING(500),
-      allowNull: false,
-    },
-    requestHeaders: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-    requestBody: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-    queryParams: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-
-    // Response Details
-    responseStatus: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    responseHeaders: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-    responseBody: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-
-    // Client Context
-    ipAddress: {
-      type: DataTypes.STRING(50),
-      allowNull: true,
-    },
-    userAgent: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-
-    // Performance
-    requestTimestamp: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
-    },
-    responseTimestamp: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    responseTimeMs: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-
-    // Error Tracking
-    errorMessage: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    stackTrace: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-
-    // Additional Context
-    sessionId: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    environment: {
-      type: DataTypes.STRING(20),
-      allowNull: true,
-    },
+    userId: { type: String, default: null },
+    httpMethod: { type: String, required: true },
+    endpoint: { type: String, required: true },
+    requestHeaders: { type: mongoose.Schema.Types.Mixed, default: null },
+    requestBody: { type: mongoose.Schema.Types.Mixed, default: null },
+    queryParams: { type: mongoose.Schema.Types.Mixed, default: null },
+    responseStatus: { type: Number, default: null },
+    responseBody: { type: mongoose.Schema.Types.Mixed, default: null },
+    ipAddress: { type: String, default: null },
+    userAgent: { type: String, default: null },
+    requestTimestamp: { type: Date, default: Date.now },
+    responseTimestamp: { type: Date, default: null },
+    responseTimeMs: { type: Number, default: null },
+    errorMessage: { type: String, default: null },
+    stackTrace: { type: String, default: null },
+    environment: { type: String, default: null },
   },
   {
-    tableName: "api_logs",
-    updatedAt: false, // ✅ Override: No updatedAt column
+    timestamps: false,
+    collection: "api_logs",
   }
 );
+
+apiLogSchema.index({ userId: 1 });
+apiLogSchema.index({ endpoint: 1 });
+apiLogSchema.index({ requestTimestamp: -1 });
+apiLogSchema.index({ responseStatus: 1 });
+
+const ApiLog = mongoose.model("ApiLog", apiLogSchema);
 
 module.exports = ApiLog;

@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const {
   createUser,
@@ -8,6 +9,17 @@ const {
   createSuperAdmin,
 } = require("../controllers/admin");
 const { authenticateUser, checkPermission } = require("../middlewares/auth");
+
+const superAdminRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests, please try again after 15 minutes",
+  },
+});
 
 // ============================================
 // ADMIN USER MANAGEMENT ROUTES
@@ -66,6 +78,6 @@ router.delete(
  * @desc    Create first Super Admin account (one-time only, no password)
  * @access  Public (requires secret key)
  */
-router.post("/create-super-admin", createSuperAdmin);
+router.post("/create-super-admin", superAdminRateLimiter, createSuperAdmin);
 
 module.exports = router;
