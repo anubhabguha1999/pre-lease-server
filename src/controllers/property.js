@@ -28,6 +28,31 @@ const { attachSignedUrls } = require("../utils/gcsHelper");
 const createProperty = asyncHandler((req, res, next) => {
   const requestStartTime = Date.now();
 
+  // Helper to parse JSON fields from FormData
+  const parseIfNeeded = (field) => {
+    if (typeof field === "string") {
+      try {
+        const parsed = JSON.parse(field);
+        // Only return if it looks like an object/array, otherwise keep as string
+        if (typeof parsed === "object" && parsed !== null) return parsed;
+      } catch (e) {
+        // Ignore error, keep as string
+      }
+    }
+    return field;
+  };
+
+  // Parse complex fields potentially sent as JSON strings
+  if (req.body.connectivityDetails) {
+    req.body.connectivityDetails = parseIfNeeded(req.body.connectivityDetails);
+  }
+  if (req.body.certifications) {
+    req.body.certifications = parseIfNeeded(req.body.certifications);
+  }
+  if (req.body.amenityIds && typeof req.body.amenityIds === "string" && req.body.amenityIds.trim().startsWith("[")) {
+    req.body.amenityIds = parseIfNeeded(req.body.amenityIds);
+  }
+
   const {
     // Basic Details
     propertyType,
@@ -79,6 +104,45 @@ const createProperty = asyncHandler((req, res, next) => {
     // ✅ NEW: Certifications (Array or object)
     // Format: { rera: true, leed: true, igbc: false, others: ["ISO 9001", "Green Building"] }
     certifications,
+    // Basic Property Details continued
+    completionYear,
+    // Lease & Tenant Details
+    tenantType,
+    leaseStartDate,
+    leaseEndDate,
+    lockInPeriodYears,
+    lockInPeriodMonths,
+    leaseDurationYears,
+
+    // Rental Details
+    rentType,
+    rentPerSqftMonthly,
+    totalMonthlyRent,
+
+    // Security Deposit
+    securityDepositType,
+    securityDepositMonths,
+    securityDepositAmount,
+
+    // Escalation & Maintenance
+    escalationFrequencyYears,
+    annualEscalationPercent,
+    maintenanceCostsIncluded,
+    maintenanceType,
+    maintenanceAmount,
+
+    // Financial Analytics
+    sellingPrice,
+    propertyTaxAnnual,
+    insuranceAnnual,
+    otherCostsAnnual,
+    additionalIncomeAnnual,
+
+    // Calculated Metrics
+    annualGrossRent,
+    grossRentalYield,
+    netRentalYield,
+    paybackPeriodYears,
   } = req.body;
 
   // Prepare log-safe request body
@@ -97,6 +161,7 @@ const createProperty = asyncHandler((req, res, next) => {
     certificationsCount: certifications
       ? Object.keys(certifications).filter((k) => certifications[k]).length
       : 0, // ✅ Added
+    sellingPrice, // Added for better logging
   };
 
   return (async () => {
@@ -189,21 +254,22 @@ const createProperty = asyncHandler((req, res, next) => {
         const propertyData = {
           // Basic Details
           propertyType: propertyType || null,
-          carpetAreaSqft: carpetAreaSqft || null,
-          lastRefurbished: lastRefurbished || null,
+          carpetArea: carpetAreaSqft || null, // Fixed mapping to match model
+          lastRefurbishedYear: lastRefurbished || null, // Fixed mapping to match model
+          completionYear: completionYear || null, // Fixed mapping to match model
           ownershipType: ownershipType || null,
           buildingGrade: buildingGrade || null,
 
           // Parking
           parkingFourWheeler: parkingSlots || null,
-          parkingTworWheeler: parkingRatio || null,
+          parkingTwoWheeler: parkingRatio || null, // Fixed mapping to match model
 
           // Infrastructure
-          powerBackupKva: powerBackupKva || null,
+          powerBackup: powerBackupKva || null, // Fixed mapping to match model
           numberOfLifts: numberOfLifts || null,
           hvacType: hvacType || null,
           furnishingStatus: furnishingStatus || null,
-          buildingMaintainedBy: buildingMaintainedBy || null,
+          maintainedById: buildingMaintainedBy || null, // Fixed mapping to match model
 
           // Legal Details
           titleStatus: titleStatus || null,
@@ -213,6 +279,31 @@ const createProperty = asyncHandler((req, res, next) => {
             hasPendingLitigation !== undefined ? hasPendingLitigation : false,
           litigationDetails: litigationDetails || null,
           reraNumber: reraNumber || null,
+
+          // Lease & Tenant Details
+          tenantType: tenantType || null,
+          leaseStartDate: leaseStartDate || null,
+          leaseEndDate: leaseEndDate || null,
+          lockInPeriodYears: lockInPeriodYears || null,
+          lockInPeriodMonths: lockInPeriodMonths || null,
+          leaseDurationYears: leaseDurationYears || null,
+
+          // Rental Details
+          rentType: rentType || "Per Sq Ft",
+          rentPerSqftMonthly: rentPerSqftMonthly || null,
+          totalMonthlyRent: totalMonthlyRent || null,
+
+          // Security Deposit
+          securityDepositType: securityDepositType || "Months of Rent",
+          securityDepositMonths: securityDepositMonths || null,
+          securityDepositAmount: securityDepositAmount || null,
+
+          // Escalation & Maintenance
+          escalationFrequencyYears: escalationFrequencyYears || null,
+          annualEscalationPercent: annualEscalationPercent || null,
+          maintenanceCostsIncluded: maintenanceCostsIncluded || null,
+          maintenanceType: maintenanceType || null,
+          maintenanceAmount: maintenanceAmount || null,
 
           // Location
           microMarket: microMarket || null,
@@ -226,6 +317,19 @@ const createProperty = asyncHandler((req, res, next) => {
           // Property Description
           description: description || null,
           otherAmenities: otherAmenities || null,
+
+          // Financial Analytics
+          sellingPrice: sellingPrice || null,
+          propertyTaxAnnual: propertyTaxAnnual || null,
+          insuranceAnnual: insuranceAnnual || null,
+          otherCostsAnnual: otherCostsAnnual || null,
+          additionalIncomeAnnual: additionalIncomeAnnual || null,
+
+          // Calculated Metrics
+          annualGrossRent: annualGrossRent || null,
+          grossRentalYield: grossRentalYield || null,
+          netRentalYield: netRentalYield || null,
+          paybackPeriodYears: paybackPeriodYears || null,
 
           // Caretaker
           caretakerId: caretakerId || null,
