@@ -1,5 +1,11 @@
 const { Op } = require("sequelize");
-const { User, Role, UserRole, Property } = require("../models");
+const {
+  User,
+  Role,
+  UserRole,
+  Property,
+  SalesRelationship,
+} = require("../models");
 const {
   validateRequiredFields,
   isValidEmail,
@@ -20,7 +26,8 @@ const { getIO } = require("../config/socket");
 const createUser = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
 
-  const { firstName, lastName, email, mobileNumber, roleName } = req.body;
+  const { firstName, lastName, email, mobileNumber, roleName, salesManagerId } =
+    req.body; // ✅ Added salesManagerId
 
   const requestBodyLog = {
     email,
@@ -28,6 +35,7 @@ const createUser = asyncHandler(async (req, res, next) => {
     firstName,
     lastName,
     roleName,
+    salesManagerId,
     createdBy: req.userRole,
   };
 
@@ -73,6 +81,54 @@ const createUser = asyncHandler(async (req, res, next) => {
       );
     }
 
+    // ✅ NEW: Sales Manager role-specific validations
+    if (req.userRole === "Sales Manager") {
+      // Sales Manager can ONLY create Sales Executive
+      if (roleName !== "Sales Executive") {
+        throw createAppError(
+          "Sales Manager can only create Sales Executive users",
+          403
+        );
+      }
+
+      // Sales Executive will be automatically assigned to the Sales Manager creating them
+      // No need for salesManagerId in request body for Sales Manager
+    }
+
+    // ✅ NEW: If creating Sales Executive, validate salesManagerId requirement
+    if (roleName === "Sales Executive") {
+      if (req.userRole === "Admin" || req.userRole === "Super Admin") {
+        // Admin/Super Admin MUST provide salesManagerId
+        if (!salesManagerId) {
+          throw createAppError(
+            "salesManagerId is required when creating Sales Executive",
+            400
+          );
+        }
+
+        // Verify the salesManagerId exists and has Sales Manager role
+        const salesManager = await User.findOne({
+          where: { userId: salesManagerId, isActive: true },
+          include: [
+            {
+              model: Role,
+              as: "roles",
+              where: { roleName: "Sales Manager", isActive: true },
+              through: { attributes: [] },
+            },
+          ],
+          attributes: ["userId"],
+        });
+
+        if (!salesManager) {
+          throw createAppError(
+            "Invalid salesManagerId. User must be an active Sales Manager",
+            400
+          );
+        }
+      }
+    }
+
     const existingUser = await User.findOne({
       where: { [Op.or]: [{ email }, { mobileNumber }] },
     });
@@ -108,6 +164,23 @@ const createUser = asyncHandler(async (req, res, next) => {
         { transaction: t }
       );
 
+      // ✅ NEW: Create SalesRelationship if creating Sales Executive
+      let salesRelationship = null;
+      if (roleName === "Sales Executive") {
+        const managerUserId =
+          req.userRole === "Sales Manager" ? req.user.userId : salesManagerId;
+
+        salesRelationship = await SalesRelationship.create(
+          {
+            salesExecutiveId: newUser.userId,
+            salesManagerId: managerUserId,
+            assignedBy: req.user.userId,
+            isActive: true,
+          },
+          { transaction: t }
+        );
+      }
+
       await logInsert({
         userId: req.user.userId,
         entityType: "User",
@@ -121,6 +194,9 @@ const createUser = asyncHandler(async (req, res, next) => {
           userType: newUser.userType,
           roleName: targetRole.roleName,
           createdBy: req.userRole,
+          ...(salesRelationship && {
+            salesManagerId: salesRelationship.salesManagerId,
+          }), // ✅ Log manager assignment
         },
         tableName: "users",
         ipAddress: req.ip,
@@ -128,7 +204,7 @@ const createUser = asyncHandler(async (req, res, next) => {
         transaction: t,
       });
 
-      return { user: newUser, role: targetRole };
+      return { user: newUser, role: targetRole, salesRelationship };
     });
 
     const data = {
@@ -138,6 +214,9 @@ const createUser = asyncHandler(async (req, res, next) => {
       mobileNumber: result.user.mobileNumber,
       role: result.role.roleName,
       userType: result.user.userType,
+      ...(result.salesRelationship && {
+        salesManagerId: result.salesRelationship.salesManagerId,
+      }), // ✅ Include manager ID in response
     };
 
     await logRequest(
@@ -270,10 +349,7 @@ const updateUser = asyncHandler(async (req, res, next) => {
         );
       }
 
-      const { oldValues, newValues } = buildUpdateValues(
-        oldRecord,
-        updateData
-      );
+      const { oldValues, newValues } = buildUpdateValues(oldRecord, updateData);
       if (newRole) {
         oldValues.roleName = currentRole.roleName;
         newValues.roleName = newRole.roleName;
@@ -855,6 +931,87 @@ const assignProperty = asyncHandler(async (req, res, next) => {
   }
 });
 
+const getAllActiveSalesManagers = asyncHandler(async (req, res, next) => {
+  const requestStartTime = Date.now();
+
+  const requestBodyLog = {
+    requestedBy: req.userRole,
+  };
+
+  try {
+    // Only Admin and Super Admin can access this endpoint
+    if (req.userRole !== "Admin" && req.userRole !== "Super Admin") {
+      throw createAppError(
+        "Access denied. Only Admin or Super Admin can fetch sales managers",
+        403
+      );
+    }
+
+    const salesManagers = await User.findAll({
+      where: { isActive: true },
+      attributes: ["userId", "firstName", "lastName", "email", "mobileNumber"],
+      include: [
+        {
+          model: Role,
+          as: "roles",
+          where: { roleName: "Sales Manager", isActive: true },
+          through: { attributes: [] },
+          attributes: ["roleName"],
+        },
+      ],
+      order: [
+        ["firstName", "ASC"],
+        ["lastName", "ASC"],
+      ],
+    });
+
+    const formattedManagers = salesManagers.map((manager) => ({
+      value: manager.userId,
+      label: `${manager.firstName} ${manager.lastName}`,
+      email: manager.email,
+      mobileNumber: manager.mobileNumber,
+    }));
+
+    await logRequest(
+      req,
+      {
+        userId: req.user.userId,
+        status: 200,
+        body: {
+          success: true,
+          message: "Sales managers fetched successfully",
+          count: formattedManagers.length,
+        },
+        requestBodyLog,
+      },
+      requestStartTime
+    );
+
+    return sendEncodedResponse(
+      res,
+      200,
+      true,
+      "Sales managers fetched successfully",
+      formattedManagers
+    );
+  } catch (error) {
+    await logRequest(
+      req,
+      {
+        userId: req.user?.userId || null,
+        status: error.statusCode || 500,
+        body: { success: false, message: error.message },
+        requestBodyLog,
+        error: error.message,
+        stackTrace: error.stack,
+      },
+      requestStartTime
+    );
+
+    return next(error);
+  }
+});
+
 module.exports = {
   createUser,
   updateUser,
@@ -862,4 +1019,5 @@ module.exports = {
   getAllUsers,
   createSuperAdmin,
   assignProperty,
+  getAllActiveSalesManagers,
 };

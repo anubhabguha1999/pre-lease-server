@@ -14,6 +14,7 @@ const PropertyCertification = require("./propertyCertification");
 const PropertyConnectivity = require("./propertyConnectivity");
 const PropertyMedia = require("./propertyMedia");
 const AuditLog = require("./auditLog");
+const SalesRelationship = require("./salesRelationship"); // ✅ NEW
 
 // User <-> Role (Many-to-Many)
 User.belongsToMany(Role, {
@@ -74,6 +75,46 @@ Property.belongsTo(User, { foreignKey: "brokerId", as: "broker" });
 // User <-> Property - Sales Agent (One-to-Many)
 User.hasMany(Property, { foreignKey: "salesId", as: "salesProperties" });
 Property.belongsTo(User, { foreignKey: "salesId", as: "salesAgent" });
+
+// SalesRelationship -> User (Sales Executive)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "salesExecutiveId",
+  as: "salesExecutive",
+  onDelete: "CASCADE",
+});
+
+// SalesRelationship -> User (Sales Manager)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "salesManagerId",
+  as: "salesManager",
+  onDelete: "CASCADE",
+});
+
+// SalesRelationship -> User (Assigned By)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "assignedBy",
+  as: "assignedByUser",
+  onDelete: "SET NULL",
+});
+
+// SalesRelationship -> User (Unassigned By)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "unassignedBy",
+  as: "unassignedByUser",
+  onDelete: "SET NULL",
+});
+
+// User -> SalesRelationship (As Executive)
+User.hasMany(SalesRelationship, {
+  foreignKey: "salesExecutiveId",
+  as: "executiveRelationships",
+});
+
+// User -> SalesRelationship (As Manager)
+User.hasMany(SalesRelationship, {
+  foreignKey: "salesManagerId",
+  as: "managerRelationships",
+});
 
 // Caretaker <-> Property (One-to-Many)
 Caretaker.hasMany(Property, { foreignKey: "maintainedById", as: "properties" });
@@ -161,4 +202,5 @@ module.exports = {
   PropertyConnectivity,
   PropertyMedia,
   AuditLog,
+  SalesRelationship, // ✅ NEW: Export the model
 };

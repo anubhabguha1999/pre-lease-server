@@ -291,6 +291,7 @@ const checkOwner = checkRole(["Owner"]);
 const checkBroker = checkRole(["Broker"]);
 const checkOwnerOrBroker = checkRole(["Owner", "Broker"]);
 const checkInvestor = checkRole(["Investor"]);
+const checkAdminOrSuperAdmin = checkRole(["Admin", "Super Admin"]);
 
 module.exports = {
   authenticateUser,
@@ -302,4 +303,5 @@ module.exports = {
   checkBroker,
   checkOwnerOrBroker,
   checkInvestor,
+  checkAdminOrSuperAdmin,
 };

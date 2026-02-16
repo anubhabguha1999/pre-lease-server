@@ -8,8 +8,13 @@ const {
   getAllUsers,
   createSuperAdmin,
   assignProperty,
+  getAllActiveSalesManagers,
 } = require("../controllers/admin");
-const { authenticateUser, checkPermission } = require("../middlewares/auth");
+const {
+  authenticateUser,
+  checkPermission,
+  checkAdminOrSuperAdmin,
+} = require("../middlewares/auth");
 
 const superAdminRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -86,6 +91,14 @@ router.put(
   authenticateUser,
   checkPermission("PROPERTY_UPDATE"),
   assignProperty
+);
+
+// ✅ NEW: Get Sales Managers
+router.get(
+  "/sales-managers",
+  authenticateUser,
+  checkAdminOrSuperAdmin,
+  getAllActiveSalesManagers
 );
 
 module.exports = router;

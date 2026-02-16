@@ -295,10 +295,7 @@ const login = asyncHandler(async (req, res, next) => {
     });
 
     if (!existingUser) {
-      throw createAppError(
-        "Account does not exist, please sign up first",
-        404
-      );
+      throw createAppError("Account does not exist, please sign up first", 404);
     }
 
     if (!existingUser.roles || existingUser.roles.length === 0) {
@@ -323,9 +320,7 @@ const login = asyncHandler(async (req, res, next) => {
     const [updatedCount] = await Token.update(
       {
         refreshToken,
-        expiresAt: Token.calculateExpiryDate(
-          process.env.REFRESH_TOKEN_EXPIRY
-        ),
+        expiresAt: Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY),
         deviceId: req.body.deviceId || null,
         userAgent: req.headers["user-agent"] || null,
         ipAddress: req.ip || null,
@@ -348,9 +343,7 @@ const login = asyncHandler(async (req, res, next) => {
       await Token.create({
         userId: existingUser.userId,
         refreshToken,
-        expiresAt: Token.calculateExpiryDate(
-          process.env.REFRESH_TOKEN_EXPIRY
-        ),
+        expiresAt: Token.calculateExpiryDate(process.env.REFRESH_TOKEN_EXPIRY),
         deviceId: req.body.deviceId || null,
         userAgent: req.headers["user-agent"] || null,
         ipAddress: req.ip || null,
@@ -447,13 +440,7 @@ const logout = asyncHandler(async (req, res, next) => {
       requestStartTime
     );
 
-    return sendEncodedResponse(
-      res,
-      200,
-      true,
-      "Logged out successfully",
-      null
-    );
+    return sendEncodedResponse(res, 200, true, "Logged out successfully", null);
   } catch (error) {
     await logRequest(
       req,
@@ -524,13 +511,7 @@ const refreshAccessToken = asyncHandler(async (req, res, next) => {
 
     const user = await User.findOne({
       where: { userId: decoded._id, isActive: true },
-      attributes: [
-        "userId",
-        "firstName",
-        "lastName",
-        "email",
-        "mobileNumber",
-      ],
+      attributes: ["userId", "firstName", "lastName", "email", "mobileNumber"],
       include: [
         {
           model: Role,
