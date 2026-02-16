@@ -71,5 +71,4 @@ router.get(
   checkSalesPerson, // Only sales roles
   getAssignedProperties
 );
-
 module.exports = router;

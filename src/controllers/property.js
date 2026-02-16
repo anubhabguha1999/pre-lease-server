@@ -1818,7 +1818,6 @@ const getAssignedProperties = asyncHandler(async (req, res, next) => {
     return next(error);
   }
 });
-
 const getPropertyById = asyncHandler(async (req, res, next) => {
   const requestStartTime = Date.now();
   const { propertyId } = req.params;
@@ -1826,6 +1825,7 @@ const getPropertyById = asyncHandler(async (req, res, next) => {
   const requestBodyLog = {
     propertyId,
     endpoint: `/api/v1/properties/${propertyId}`,
+    userId: req.user?.userId || null,
   };
 
   try {
@@ -1854,15 +1854,15 @@ const getPropertyById = asyncHandler(async (req, res, next) => {
           required: false,
         },
         {
-          model: PropertyCertification,
-          as: "certifications",
-          attributes: ["certificationType", "certificationDetails"],
+          model: PropertyConnectivity,
+          as: "connectivity",
+          attributes: ["connectivityId", "connectivityType", "name", "distanceKm"],
           required: false,
         },
         {
-          model: PropertyConnectivity,
-          as: "connectivity",
-          attributes: ["connectivityType", "name", "distanceKm"],
+          model: PropertyCertification,
+          as: "certifications",
+          attributes: ["certificationType", "certificationDetails"],
           required: false,
         },
       ],
@@ -1892,7 +1892,6 @@ const getPropertyById = asyncHandler(async (req, res, next) => {
     } else {
       propertyData.tenureLeftYears = null;
     }
-
     await logRequest(
       req,
       {
