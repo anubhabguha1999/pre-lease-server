@@ -14,7 +14,12 @@ const PropertyCertification = require("./propertyCertification");
 const PropertyConnectivity = require("./propertyConnectivity");
 const PropertyMedia = require("./propertyMedia");
 const AuditLog = require("./auditLog");
-const SalesRelationship = require("./salesRelationship"); // ✅ NEW
+const SalesRelationship = require("./salesRelationship");
+const PropertyInvestorNote = require("./propertyInvestorNote");
+
+// ============================================
+// USER & ROLE ASSOCIATIONS
+// ============================================
 
 // User <-> Role (Many-to-Many)
 User.belongsToMany(Role, {
@@ -64,6 +69,10 @@ RolePermission.belongsTo(User, {
 User.hasMany(Token, { foreignKey: "userId", as: "tokens" });
 Token.belongsTo(User, { foreignKey: "userId", as: "user" });
 
+// ============================================
+// PROPERTY ASSOCIATIONS
+// ============================================
+
 // User <-> Property - Owner (One-to-Many)
 User.hasMany(Property, { foreignKey: "ownerId", as: "ownedProperties" });
 Property.belongsTo(User, { foreignKey: "ownerId", as: "owner" });
@@ -75,46 +84,6 @@ Property.belongsTo(User, { foreignKey: "brokerId", as: "broker" });
 // User <-> Property - Sales Agent (One-to-Many)
 User.hasMany(Property, { foreignKey: "salesId", as: "salesProperties" });
 Property.belongsTo(User, { foreignKey: "salesId", as: "salesAgent" });
-
-// SalesRelationship -> User (Sales Executive)
-SalesRelationship.belongsTo(User, {
-  foreignKey: "salesExecutiveId",
-  as: "salesExecutive",
-  onDelete: "CASCADE",
-});
-
-// SalesRelationship -> User (Sales Manager)
-SalesRelationship.belongsTo(User, {
-  foreignKey: "salesManagerId",
-  as: "salesManager",
-  onDelete: "CASCADE",
-});
-
-// SalesRelationship -> User (Assigned By)
-SalesRelationship.belongsTo(User, {
-  foreignKey: "assignedBy",
-  as: "assignedByUser",
-  onDelete: "SET NULL",
-});
-
-// SalesRelationship -> User (Unassigned By)
-SalesRelationship.belongsTo(User, {
-  foreignKey: "unassignedBy",
-  as: "unassignedByUser",
-  onDelete: "SET NULL",
-});
-
-// User -> SalesRelationship (As Executive)
-User.hasMany(SalesRelationship, {
-  foreignKey: "salesExecutiveId",
-  as: "executiveRelationships",
-});
-
-// User -> SalesRelationship (As Manager)
-User.hasMany(SalesRelationship, {
-  foreignKey: "salesManagerId",
-  as: "managerRelationships",
-});
 
 // Caretaker <-> Property (One-to-Many)
 Caretaker.hasMany(Property, { foreignKey: "maintainedById", as: "properties" });
@@ -168,6 +137,80 @@ PropertyConnectivity.belongsTo(Property, {
 Property.hasMany(PropertyMedia, { foreignKey: "propertyId", as: "media" });
 PropertyMedia.belongsTo(Property, { foreignKey: "propertyId", as: "property" });
 
+// ============================================
+// SALES RELATIONSHIP ASSOCIATIONS
+// ============================================
+
+// SalesRelationship -> User (Sales Executive)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "salesExecutiveId",
+  as: "salesExecutive",
+  onDelete: "CASCADE",
+});
+
+// SalesRelationship -> User (Sales Manager)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "salesManagerId",
+  as: "salesManager",
+  onDelete: "CASCADE",
+});
+
+// SalesRelationship -> User (Assigned By)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "assignedBy",
+  as: "assignedByUser",
+  onDelete: "SET NULL",
+});
+
+// SalesRelationship -> User (Unassigned By)
+SalesRelationship.belongsTo(User, {
+  foreignKey: "unassignedBy",
+  as: "unassignedByUser",
+  onDelete: "SET NULL",
+});
+
+// User -> SalesRelationship (As Executive)
+User.hasMany(SalesRelationship, {
+  foreignKey: "salesExecutiveId",
+  as: "executiveRelationships",
+});
+
+// User -> SalesRelationship (As Manager)
+User.hasMany(SalesRelationship, {
+  foreignKey: "salesManagerId",
+  as: "managerRelationships",
+});
+
+// ============================================
+// PROPERTY INVESTOR NOTES ASSOCIATIONS
+// ============================================
+
+// Property <-> PropertyInvestorNote (One-to-Many)
+Property.hasMany(PropertyInvestorNote, {
+  foreignKey: "propertyId",
+  as: "investorNotes",
+});
+
+PropertyInvestorNote.belongsTo(Property, {
+  foreignKey: "propertyId",
+  as: "property",
+});
+
+// User (Investor) <-> PropertyInvestorNote (One-to-Many)
+User.hasMany(PropertyInvestorNote, {
+  foreignKey: "investorId",
+  as: "propertyNotes",
+});
+
+PropertyInvestorNote.belongsTo(User, {
+  foreignKey: "investorId",
+  as: "investor",
+});
+
+// ============================================
+// AUDIT LOG ASSOCIATIONS
+// ============================================
+
 // User <-> AuditLog (One-to-Many)
 User.hasMany(AuditLog, { foreignKey: "userId", as: "auditLogs" });
 AuditLog.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -186,6 +229,10 @@ AuditLog.belongsTo(Property, {
   constraints: false,
 });
 
+// ============================================
+// EXPORTS
+// ============================================
+
 module.exports = {
   sequelize,
   User,
@@ -202,5 +249,6 @@ module.exports = {
   PropertyConnectivity,
   PropertyMedia,
   AuditLog,
-  SalesRelationship, // ✅ NEW: Export the model
+  SalesRelationship,
+  PropertyInvestorNote, // ✅ NEW: Export the model
 };

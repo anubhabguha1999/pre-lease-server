@@ -112,8 +112,16 @@ const Property = sequelize.define(
       allowNull: true,
       validate: {
         isIn: {
-          args: [["Central AC", "Split AC", "VRF System"]],
-          msg: "Invalid HVAC type. Must be one of: Central AC, Split AC, VRF System",
+          args: [
+            [
+              "Central AC",
+              "Split AC",
+              "VRF System",
+              "Chilled Water System",
+              "None",
+            ],
+          ],
+          msg: "Invalid HVAC type. Must be one of: Central AC, Split AC, VRF System, Chilled Water System, None",
         },
       },
     },
@@ -368,6 +376,40 @@ const Property = sequelize.define(
     paybackPeriodYears: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: true,
+    },
+
+    isVerified: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "pending",
+      validate: {
+        isIn: {
+          args: [["pending", "partial", "completed"]],
+          msg: "Invalid verification status. Must be one of: pending, partial, completed",
+        },
+      },
+    },
+
+    sellingStatus: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "verification of requirement",
+      validate: {
+        isIn: {
+          args: [
+            [
+              "verification of requirement",
+              "confirm property match",
+              "align visits",
+              "negotiations",
+              "closing",
+              "documentation",
+              "final closure",
+            ],
+          ],
+          msg: "Invalid selling status",
+        },
+      },
     },
 
     // ========== METADATA ==========
