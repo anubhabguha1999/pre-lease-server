@@ -8,6 +8,7 @@ const {
   UserRole,
   PropertyCertification,
   PropertyConnectivity,
+  SalesRelationship,
 } = require("../models");
 const { sequelize } = require("../config/dbConnection");
 const createAppError = require("../utils/appError");
@@ -1541,11 +1542,25 @@ const getAssignedProperties = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // ✅ MANDATORY: Filter by salesId = logged-in user
     const whereClause = {
       isActive: true,
-      salesId: req.user.userId, // ✅ Always filter by assigned sales user
     };
+    if (req.user.role === "Sales Manager") {
+      const relationships = await SalesRelationship.findAll({
+        where: {
+          salesManagerId: req.user.userId,
+          isActive: true,
+        },
+        attributes: ["salesExecutiveId"],
+      });
+
+      const teamMemberIds = relationships.map((r) => r.salesExecutiveId);
+      teamMemberIds.push(req.user.userId); // Include manager's own properties
+
+      whereClause.salesId = { [Op.in]: teamMemberIds };
+    } else {
+      whereClause.salesId = req.user.userId;
+    }
 
     // ✅ All the same filters as getAllProperties
     if (minPrice || maxPrice) {
@@ -1769,6 +1784,7 @@ const getAssignedProperties = asyncHandler(async (req, res, next) => {
         assignedTo: {
           userId: req.user.userId,
           role: req.user.role,
+          ...(req.user.role === "Sales Manager" && { teamView: true }),
         },
         filters: {
           applied: {

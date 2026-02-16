@@ -6,7 +6,10 @@ const {
   login,
   logout,
   refreshAccessToken,
+  switchRole,
+  sendOtpHandler,
 } = require("../controllers/user");
+const { authenticateUser } = require("../middlewares/auth");
 
 // ============================================
 // RATE LIMITERS FOR AUTH ROUTES
@@ -38,6 +41,13 @@ const refreshRateLimiter = rateLimit({
 // ============================================
 
 /**
+ * @route   POST /api/v1/auth/send-otp
+ * @desc    Send OTP to mobile number via MessageCentral
+ * @access  Public
+ */
+userrouter.post("/send-otp", authRateLimiter, sendOtpHandler);
+
+/**
  * @route   POST /api/v1/auth/signup
  * @desc    Register new user with OTP verification
  * @access  Public
@@ -66,5 +76,6 @@ userrouter.post("/logout", logout);
  * @header  Authorization: Bearer <refreshToken>
  */
 userrouter.get("/refresh-token", refreshRateLimiter, refreshAccessToken);
+userrouter.post("/switch-role", authenticateUser, switchRole);
 
 module.exports = userrouter;
