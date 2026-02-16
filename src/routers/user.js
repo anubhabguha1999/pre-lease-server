@@ -11,7 +11,6 @@ const {
   verifyOtpHandler,
 } = require("../controllers/user");
 const { authenticateUser } = require("../middlewares/auth");
-
 // ============================================
 // RATE LIMITERS FOR AUTH ROUTES
 // ============================================
