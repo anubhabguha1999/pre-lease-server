@@ -7,8 +7,13 @@ const {
   getAllCaretakers,
   compareProperties,
   getAllProperties,
+  getAssignedProperties,
 } = require("../controllers/property");
-const { authenticateUser, checkPermission } = require("../middlewares/auth");
+const {
+  authenticateUser,
+  checkPermission,
+  checkSalesPerson,
+} = require("../middlewares/auth");
 const { multerUpload, uploadToGCS } = require("../middlewares/uploadGCS");
 
 // ============================================
@@ -54,5 +59,13 @@ router.get("/caretakers", authenticateUser, getAllCaretakers);
 
 // ✅ Get all properties with some filters
 router.get("/properties", getAllProperties);
+
+// ✅ Get properties assigned to logged-in Sales Manager/Executive
+router.get(
+  "/properties/assigned",
+  authenticateUser,
+  checkSalesPerson, // Only sales roles
+  getAssignedProperties
+);
 
 module.exports = router;

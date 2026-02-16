@@ -287,7 +287,10 @@ const createProperty = asyncHandler(async (req, res, next) => {
         where: { salesId: { [Op.in]: salesUserIds }, isActive: true },
         attributes: [
           "salesId",
-          [sequelize.fn("COUNT", sequelize.col("property_id")), "propertyCount"],
+          [
+            sequelize.fn("COUNT", sequelize.col("property_id")),
+            "propertyCount",
+          ],
         ],
         group: ["salesId"],
         raw: true,
@@ -1498,6 +1501,308 @@ const getAllProperties = asyncHandler(async (req, res, next) => {
   }
 });
 
+const getAssignedProperties = asyncHandler(async (req, res, next) => {
+  const requestStartTime = Date.now();
+
+  const {
+    page = 1,
+    limit = 10,
+    minPrice,
+    maxPrice,
+    propertyTypes,
+    minRent,
+    maxRent,
+    minROI,
+    maxROI,
+    minTenure,
+    maxTenure,
+    city,
+    state,
+    microMarket,
+    sortBy = "createdAt",
+    sortOrder = "DESC",
+  } = req.query;
+
+  const requestBodyLog = {
+    page,
+    limit,
+    assignedTo: req.user.userId,
+    userRole: req.user.role,
+    filters: {
+      pricing: { minPrice, maxPrice },
+      propertyTypes,
+      rent: { minRent, maxRent },
+      roi: { minROI, maxROI },
+      tenure: { minTenure, maxTenure },
+      location: { city, state, microMarket },
+    },
+    sortBy,
+    sortOrder,
+  };
+
+  try {
+    // ✅ MANDATORY: Filter by salesId = logged-in user
+    const whereClause = {
+      isActive: true,
+      salesId: req.user.userId, // ✅ Always filter by assigned sales user
+    };
+
+    // ✅ All the same filters as getAllProperties
+    if (minPrice || maxPrice) {
+      whereClause.sellingPrice = {};
+      if (minPrice) whereClause.sellingPrice[Op.gte] = parseFloat(minPrice);
+      if (maxPrice) whereClause.sellingPrice[Op.lte] = parseFloat(maxPrice);
+    }
+
+    if (propertyTypes) {
+      const typesArray = propertyTypes.split(",").map((type) => type.trim());
+      whereClause.propertyType = { [Op.in]: typesArray };
+    }
+
+    if (minRent || maxRent) {
+      whereClause.annualGrossRent = {};
+      if (minRent) whereClause.annualGrossRent[Op.gte] = parseFloat(minRent);
+      if (maxRent) whereClause.annualGrossRent[Op.lte] = parseFloat(maxRent);
+    }
+
+    if (minROI || maxROI) {
+      whereClause.grossRentalYield = {};
+      if (minROI) whereClause.grossRentalYield[Op.gte] = parseFloat(minROI);
+      if (maxROI) whereClause.grossRentalYield[Op.lte] = parseFloat(maxROI);
+    }
+
+    if (minTenure || maxTenure) {
+      const now = new Date();
+
+      if (minTenure) {
+        const minDate = new Date(now);
+        minDate.setFullYear(minDate.getFullYear() + parseInt(minTenure));
+        whereClause.leaseEndDate = whereClause.leaseEndDate || {};
+        whereClause.leaseEndDate[Op.gte] = minDate;
+      }
+
+      if (maxTenure) {
+        const maxDate = new Date(now);
+        maxDate.setFullYear(maxDate.getFullYear() + parseInt(maxTenure));
+        whereClause.leaseEndDate = whereClause.leaseEndDate || {};
+        whereClause.leaseEndDate[Op.lte] = maxDate;
+      }
+    }
+
+    if (city) {
+      if (city.includes(",")) {
+        const citiesArray = city.split(",").map((c) => c.trim());
+        whereClause.city = { [Op.in]: citiesArray };
+      } else {
+        whereClause.city = { [Op.iLike]: `%${city}%` };
+      }
+    }
+
+    if (state) {
+      if (state.includes(",")) {
+        const statesArray = state.split(",").map((s) => s.trim());
+        whereClause.state = { [Op.in]: statesArray };
+      } else {
+        whereClause.state = { [Op.iLike]: `%${state}%` };
+      }
+    }
+
+    if (microMarket) {
+      if (microMarket.includes(",")) {
+        const microMarketsArray = microMarket.split(",").map((m) => m.trim());
+        whereClause.microMarket = { [Op.in]: microMarketsArray };
+      } else {
+        whereClause.microMarket = { [Op.iLike]: `%${microMarket}%` };
+      }
+    }
+
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const offset = (pageNumber - 1) * pageSize;
+
+    const { count, rows: properties } = await Property.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        "propertyId",
+        "propertyType",
+        "carpetArea",
+        "carpetAreaUnit",
+        "completionYear",
+        "lastRefurbishedYear",
+        "buildingGrade",
+        "ownershipType",
+        "parkingTwoWheeler",
+        "parkingFourWheeler",
+        "powerBackup",
+        "numberOfLifts",
+        "hvacType",
+        "furnishingStatus",
+        "titleStatus",
+        "occupancyCertificate",
+        "leaseRegistration",
+        "reraNumber",
+        "tenantType",
+        "leaseStartDate",
+        "leaseEndDate",
+        "lockInPeriodYears",
+        "lockInPeriodMonths",
+        "leaseDurationYears",
+        "rentType",
+        "rentPerSqftMonthly",
+        "totalMonthlyRent",
+        "securityDepositType",
+        "securityDepositMonths",
+        "securityDepositAmount",
+        "escalationFrequencyYears",
+        "annualEscalationPercent",
+        "maintenanceCostsIncluded",
+        "maintenanceType",
+        "maintenanceAmount",
+        "microMarket",
+        "city",
+        "state",
+        "sellingPrice",
+        "propertyTaxAnnual",
+        "insuranceAnnual",
+        "otherCostsAnnual",
+        "totalOperatingAnnualCosts",
+        "additionalIncomeAnnual",
+        "annualGrossRent",
+        "grossRentalYield",
+        "netRentalYield",
+        "paybackPeriodYears",
+        "description",
+        "additionalDescription",
+        "createdAt",
+        "updatedAt",
+      ],
+      include: [
+        {
+          model: Amenity,
+          as: "amenities",
+          attributes: ["amenityId", "amenityName"],
+          through: { attributes: [] },
+          where: { isActive: true },
+          required: false,
+        },
+        {
+          model: PropertyMedia,
+          as: "media",
+          attributes: ["mediaId", "mediaType", "fileUrl"],
+          required: false,
+          limit: 1,
+          separate: true,
+        },
+        {
+          model: Caretaker,
+          as: "caretaker",
+          attributes: ["caretakerId", "caretakerName"],
+          where: { isActive: true },
+          required: false,
+        },
+      ],
+      order: [[sortBy, sortOrder.toUpperCase()]],
+      limit: pageSize,
+      offset: offset,
+      distinct: true,
+    });
+
+    const propertiesWithTenure = await Promise.all(
+      properties.map(async (property) => {
+        const propertyData = property.toJSON();
+
+        if (propertyData.leaseEndDate) {
+          const now = new Date();
+          const leaseEnd = new Date(propertyData.leaseEndDate);
+          const diffTime = leaseEnd - now;
+          const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+          propertyData.tenureLeftYears = Math.max(
+            0,
+            parseFloat(diffYears.toFixed(2))
+          );
+        } else {
+          propertyData.tenureLeftYears = null;
+        }
+
+        if (propertyData.media && propertyData.media.length > 0) {
+          propertyData.media = await attachSignedUrls(propertyData.media);
+        }
+
+        return propertyData;
+      })
+    );
+
+    const totalPages = Math.ceil(count / pageSize);
+    const hasNextPage = pageNumber < totalPages;
+    const hasPrevPage = pageNumber > 1;
+
+    await logRequest(
+      req,
+      {
+        userId: req.user.userId,
+        status: 200,
+        body: {
+          success: true,
+          message: "Assigned properties fetched successfully",
+          count: count,
+        },
+        requestBodyLog,
+      },
+      requestStartTime
+    );
+
+    return sendEncodedResponse(
+      res,
+      200,
+      true,
+      "Assigned properties fetched successfully",
+      propertiesWithTenure,
+      {
+        pagination: {
+          currentPage: pageNumber,
+          pageSize: pageSize,
+          totalItems: count,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage,
+        },
+        assignedTo: {
+          userId: req.user.userId,
+          role: req.user.role,
+        },
+        filters: {
+          applied: {
+            pricing: minPrice || maxPrice ? { minPrice, maxPrice } : null,
+            propertyTypes: propertyTypes || null,
+            rent: minRent || maxRent ? { minRent, maxRent } : null,
+            roi: minROI || maxROI ? { minROI, maxROI } : null,
+            tenure: minTenure || maxTenure ? { minTenure, maxTenure } : null,
+            location:
+              city || state || microMarket
+                ? { city, state, microMarket }
+                : null,
+          },
+        },
+      }
+    );
+  } catch (error) {
+    await logRequest(
+      req,
+      {
+        userId: req.user?.userId || null,
+        status: error.statusCode || 500,
+        body: { success: false, message: error.message },
+        requestBodyLog,
+        error: error.message,
+        stackTrace: error.stack,
+      },
+      requestStartTime
+    );
+
+    return next(error);
+  }
+});
+
 module.exports = {
   createProperty,
   updateProperty,
@@ -1505,4 +1810,5 @@ module.exports = {
   getAllCaretakers,
   compareProperties,
   getAllProperties,
+  getAssignedProperties,
 };
